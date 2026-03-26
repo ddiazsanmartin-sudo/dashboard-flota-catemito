@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Flota Catemito</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy:   { DEFAULT: '#0f2744', light: '#1a3a5c', lighter: '#1e4976' },
+            gold:   { DEFAULT: '#f5a623', light: '#fbbf24' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* =====================================================
+       SECCIÓN: ESTILOS GLOBALES Y ANIMACIONES
+    ===================================================== */
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f1f5f9; }
+
+    .tab-btn.active {
+      background: #f5a623;
+      color: #0f2744;
+      font-weight: 700;
+    }
+
+    /* Barra de progreso animada */
+    .progress-bar { transition: width 0.8s ease-in-out; }
+
+    /* Spinner de carga */
+    .spinner {
+      border: 3px solid #e2e8f0;
+      border-top-color: #f5a623;
+      border-radius: 50%;
+      width: 36px; height: 36px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Hover en fila de elemento */
+    .elem-row:hover { background: #f8fafc; cursor: pointer; }
+
+    /* Modal overlay */
+    #modal-overlay { backdrop-filter: blur(2px); }
+
+    /* Scrollbar personalizado */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- =====================================================
+     SECCIÓN: NAVBAR SUPERIOR
+===================================================== -->
+<header class="bg-navy text-white shadow-xl">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+    <!-- Logo y título -->
+    <div class="flex items-center gap-3">
+      <span class="text-3xl">🚌</span>
+      <div>
+        <h1 class="text-lg font-bold leading-tight">Dashboard Flota Catemito</h1>
+        <p class="text-xs text-blue-300" id="subtitulo-nav">Cargando datos...</p>
+      </div>
+    </div>
+
+    <!-- Selector de auditoría + refresh -->
+    <div class="flex items-center gap-2 flex-wrap">
+      <label class="text-xs text-blue-300 font-medium">Auditoría:</label>
+      <select id="sel-auditoria"
+        class="bg-navy-light border border-blue-600 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:border-gold">
+        <option value="">Cargando...</option>
+      </select>
+      <button onclick="cargarDashboard()" title="Actualizar datos"
+        class="bg-gold hover:bg-gold-light text-navy font-bold px-3 py-1.5 rounded text-sm transition">
+        ↻ Actualizar
+      </button>
+    </div>
+
+    <!-- KPI general -->
+    <div class="flex items-center gap-4">
+      <div class="text-center">
+        <div id="pct-general-nav" class="text-2xl font-bold text-gold">—</div>
+        <div class="text-xs text-blue-300">Estado general</div>
+      </div>
+      <div class="text-center">
+        <div id="buses-auditados-nav" class="text-2xl font-bold text-white">—</div>
+        <div class="text-xs text-blue-300">Buses auditados</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barra de progreso de auditoría -->
+  <div class="bg-navy-light h-1.5">
+    <div id="barra-progreso-nav" class="progress-bar h-full bg-gold" style="width: 0%"></div>
+  </div>
+</header>
+
+<!-- =====================================================
+     SECCIÓN: TABS DE NAVEGACIÓN
+===================================================== -->
+<nav class="bg-navy-light shadow sticky top-0 z-20">
+  <div class="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto py-1">
+    <button class="tab-btn active whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
+            onclick="mostrarTab('progreso', this)">📊 Progreso</button>
+    <button class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
+            onclick="mostrarTab('accesorios', this)">🔧 Accesorios</button>
+    <button class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
+            onclick="mostrarTab('camaras', this)">📷 Cámaras</button>
+    <button class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
+            onclick="mostrarTab('ruteros', this)">🪧 Ruteros</button>
+    <button class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
+            onclick="mostrarTab('buscador', this)">🔍 Buscador por Bus</button>
+  </div>
+</nav>
+
+<!-- =====================================================
+     SECCIÓN: CONTENEDOR PRINCIPAL
+===================================================== -->
+<main class="max-w-7xl mx-auto px-4 py-6">
+
+  <!-- Estado de carga -->
+  <div id="estado-carga" class="flex flex-col items-center justify-center py-24 gap-4">
+    <div class="spinner"></div>
+    <p class="text-slate-500 text-sm">Conectando con Google Sheets...</p>
+  </div>
+
+  <!-- Estado de error -->
+  <div id="estado-error" class="hidden bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+    <div class="text-4xl mb-3">⚠️</div>
+    <h3 class="font-bold text-red-700 text-lg mb-2">Error al cargar los datos</h3>
+    <p id="error-msg" class="text-red-600 text-sm mb-4"></p>
+    <button onclick="cargarDashboard()" class="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">
+      Reintentar
+    </button>
+  </div>
+
+  <!-- =====================================================
+       SECCIÓN TAB: PROGRESO
+  ===================================================== -->
+  <div id="tab-progreso" class="tab-content hidden">
+
+    <!-- Card: auditoría actual -->
+    <div id="card-auditoria-actual" class="bg-white rounded-2xl shadow p-6 mb-6">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span id="badge-estado" class="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">EN CURSO</span>
+            <h2 id="nombre-auditoria" class="text-xl font-bold text-navy">—</h2>
+          </div>
+          <p id="fechas-auditoria" class="text-slate-500 text-sm mb-4">—</p>
+
+          <!-- Progreso buses -->
+          <div class="mb-2 flex items-center justify-between">
+            <span class="text-sm font-medium text-slate-600">Buses auditados</span>
+            <span id="texto-buses-prog" class="text-sm font-bold text-navy">—</span>
+          </div>
+          <div class="w-full bg-slate-200 rounded-full h-3 mb-4">
+            <div id="barra-buses" class="progress-bar h-3 rounded-full bg-gold" style="width:0%"></div>
+          </div>
+        </div>
+
+        <!-- KPI grande -->
+        <div class="text-center bg-slate-50 rounded-xl px-8 py-4 min-w-[140px]">
+          <div id="pct-general-prog" class="text-5xl font-black text-navy">—</div>
+          <div class="text-xs text-slate-500 mt-1">% Estado general</div>
+          <div id="dias-prog" class="text-sm font-medium text-gold mt-2">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mensaje sin auditorías -->
+    <div id="msg-sin-auditorias" class="hidden bg-yellow-50 border border-yellow-200 rounded-xl p-6 mb-6 text-center">
+      <div class="text-3xl mb-2">📋</div>
+      <h3 class="font-bold text-yellow-800">No hay auditorías definidas</h3>
+      <p class="text-yellow-700 text-sm mt-1">
+        Crea la hoja <strong>Auditorias</strong> en tu Google Sheet con columnas:
+        N° Auditoría | Fecha inicio | Fecha cierre | Nombre
+      </p>
+      <p class="text-yellow-600 text-sm mt-1">Mostrando todos los datos disponibles.</p>
+    </div>
+
+    <!-- Tabla histórico de auditorías -->
+    <div id="card-historial" class="bg-white rounded-2xl shadow overflow-hidden">
+      <div class="bg-navy px-6 py-3">
+        <h3 class="text-white font-bold text-sm">📅 Historial de Auditorías</h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-600">
+            <tr>
+              <th class="px-4 py-3 text-left font-semibold">Auditoría</th>
+              <th class="px-4 py-3 text-left font-semibold">Período</th>
+              <th class="px-4 py-3 text-center font-semibold">Días</th>
+              <th class="px-4 py-3 text-center font-semibold">Buses</th>
+              <th class="px-4 py-3 text-center font-semibold">% General</th>
+              <th class="px-4 py-3 text-center font-semibold">Accesorios</th>
+              <th class="px-4 py-3 text-center font-semibold">Cámaras</th>
+              <th class="px-4 py-3 text-center font-semibold">Ruteros</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-historial" class="divide-y divide-slate-100">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================
+       SECCIÓN TAB: ACCESORIOS / CÁMARAS / RUTEROS
+       (template reutilizado para los 3 tabs de grupos)
+  ===================================================== -->
+  <div id="tab-accesorios" class="tab-content hidden">
+    <div id="contenido-accesorios"></div>
+  </div>
+  <div id="tab-camaras" class="tab-content hidden">
+    <div id="contenido-camaras"></div>
+  </div>
+  <div id="tab-ruteros" class="tab-content hidden">
+    <div id="contenido-ruteros"></div>
+  </div>
+
+  <!-- =====================================================
+       SECCIÓN TAB: BUSCADOR POR BUS
+  ===================================================== -->
+  <div id="tab-buscador" class="tab-content hidden">
+    <div class="bg-white rounded-2xl shadow p-6 mb-6">
+      <h2 class="text-lg font-bold text-navy mb-4">🔍 Buscar bus por N° Interno</h2>
+      <div class="flex gap-3 flex-wrap">
+        <input id="input-bus" type="text" placeholder="Ej: 6189"
+          class="border border-slate-300 rounded-lg px-4 py-2 text-sm flex-1 min-w-[150px] focus:outline-none focus:border-navy"
+          onkeyup="if(event.key==='Enter') buscarBus()" />
+        <button onclick="buscarBus()"
+          class="bg-navy text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-navy-light transition">
+          Buscar
+        </button>
+      </div>
+      <!-- Sugerencias de buses auditados -->
+      <div id="sugerencias-buses" class="mt-3 flex flex-wrap gap-1.5 max-h-32 overflow-y-auto"></div>
+    </div>
+
+    <div id="resultado-bus" class="hidden"></div>
+    <div id="bus-no-encontrado" class="hidden bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
+      <div class="text-3xl mb-2">🚌</div>
+      <p class="text-yellow-700 font-medium">Bus no encontrado en esta auditoría.</p>
+      <p class="text-yellow-600 text-sm mt-1">Puede que aún no haya sido auditado en este período.</p>
+    </div>
+  </div>
+
+</main>
+
+<!-- =====================================================
+     SECCIÓN: MODAL - DETALLE DE ELEMENTO
+===================================================== -->
+<div id="modal-overlay" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
+    <!-- Header modal -->
+    <div class="bg-navy text-white px-6 py-4 rounded-t-2xl flex justify-between items-start">
+      <div>
+        <p id="modal-subgrupo" class="text-blue-300 text-xs mb-0.5"></p>
+        <h3 id="modal-titulo" class="font-bold text-lg leading-tight"></h3>
+      </div>
+      <button onclick="cerrarModal()" class="text-white/70 hover:text-white text-xl leading-none ml-4">✕</button>
+    </div>
+
+    <!-- Contenido modal -->
+    <div class="p-6 overflow-y-auto flex-1">
+      <!-- KPI porcentaje -->
+      <div id="modal-kpi" class="flex items-center gap-4 mb-6">
+        <div id="modal-pct-badge" class="text-4xl font-black"></div>
+        <div>
+          <p id="modal-detalle-num" class="text-slate-600 text-sm"></p>
+          <div id="modal-barra-wrap" class="w-48 bg-slate-200 rounded-full h-2 mt-1">
+            <div id="modal-barra" class="progress-bar h-2 rounded-full" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista buses fallidos -->
+      <div id="modal-fallidos-section">
+        <h4 class="font-semibold text-slate-700 text-sm mb-3">
+          🔴 Buses <span id="modal-titulo-fallidos">No Operativos</span>:
+          <span id="modal-count-fallidos" class="text-slate-500 font-normal"></span>
+        </h4>
+        <div id="modal-fallidos" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <!-- Aseo: distribución -->
+      <div id="modal-aseo-section" class="hidden">
+        <h4 class="font-semibold text-slate-700 text-sm mb-3">📊 Distribución de puntajes:</h4>
+        <div id="modal-aseo-dist" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- =====================================================
+     SECCIÓN: JAVASCRIPT - LÓGICA DEL DASHBOARD
+===================================================== -->
+<script>
+// =====================================================
+// SECCIÓN JS: ESTADO GLOBAL
+// =====================================================
+let datosActuales = null;
+let auditoriaActual = null;
+
+// =====================================================
+// SECCIÓN JS: INICIALIZACIÓN
+// =====================================================
+document.addEventListener('DOMContentLoaded', async () => {
+  await cargarSelectAuditorias();
+  await cargarDashboard();
+});
+
+// =====================================================
+// SECCIÓN JS: CARGA DEL SELECTOR DE AUDITORÍAS
+// =====================================================
+async function cargarSelectAuditorias() {
+  try {
+    const resp = await fetch('/api/auditorias');
+    if (!resp.ok) return;
+    const auditorias = await resp.json();
+
+    const sel = document.getElementById('sel-auditoria');
+    sel.innerHTML = '';
+
+    if (auditorias.length === 0) {
+      sel.innerHTML = '<option value="">Sin auditorías definidas</option>';
+      return;
+    }
+
+    auditorias.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.numero;
+      opt.textContent = a.enCurso ? `${a.nombre} (en curso)` : a.nombre;
+      sel.appendChild(opt);
+    });
+
+    // Seleccionar la más reciente (primera en la lista)
+    sel.selectedIndex = 0;
+    sel.onchange = () => cargarDashboard();
+  } catch (e) {
+    console.warn('No se pudo cargar auditorías:', e.message);
+  }
+}
+
+// =====================================================
+// SECCIÓN JS: CARGA PRINCIPAL DEL DASHBOARD
+// =====================================================
+async function cargarDashboard() {
+  mostrarCarga(true);
+
+  const sel = document.getElementById('sel-auditoria');
+  const numAud = sel.value || '';
+  const url = numAud ? `/api/dashboard?auditoria=${numAud}` : '/api/dashboard';
+
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: `Error HTTP ${resp.status}` }));
+      throw new Error(err.error || `Error HTTP ${resp.status}`);
+    }
+
+    datosActuales = await resp.json();
+    auditoriaActual = datosActuales.auditoria;
+
+    renderNavbar();
+    renderProgreso();
+    renderTabGrupo('Accesorios', 'accesorios');
+    renderTabGrupo('Camaras', 'camaras');
+    renderTabGrupo('Ruteros', 'ruteros');
+    renderSugerenciasBuses();
+
+    mostrarCarga(false);
+  } catch (e) {
+    mostrarError(e.message);
+  }
+}
+
+// =====================================================
+// SECCIÓN JS: HELPERS DE UI
+// =====================================================
+function mostrarCarga(activo) {
+  document.getElementById('estado-carga').classList.toggle('hidden', !activo);
+  document.getElementById('estado-error').classList.add('hidden');
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.toggle('hidden', activo));
+  if (activo) {
+    // Asegurarse de mostrar el tab activo al terminar
+    const tabActivo = document.querySelector('.tab-btn.active');
+    if (tabActivo) tabActivo.click();
+  }
+}
+
+function mostrarError(msg) {
+  document.getElementById('estado-carga').classList.add('hidden');
+  document.getElementById('estado-error').classList.remove('hidden');
+  document.getElementById('error-msg').textContent = msg;
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+}
+
+function mostrarTab(nombre, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const tab = document.getElementById(`tab-${nombre}`);
+  if (tab) tab.classList.remove('hidden');
+  if (btn) btn.classList.add('active');
+}
+
+// =====================================================
+// SECCIÓN JS: BADGE DE PORCENTAJE (con colores)
+// Verde >95%, Amarillo 85-94%, Rojo <85%, Gris null
+// =====================================================
+function pctBadge(pct, size = 'md') {
+  if (pct === null || pct === undefined) {
+    return `<span class="text-slate-400 ${size === 'lg' ? 'text-2xl font-black' : 'text-sm font-bold'}">—</span>`;
+  }
+  const color = pct >= 95 ? 'text-emerald-600' : pct >= 85 ? 'text-amber-500' : 'text-red-600';
+  const sizes = size === 'lg' ? 'text-2xl font-black' : size === 'sm' ? 'text-xs font-bold' : 'text-sm font-bold';
+  return `<span class="${color} ${sizes}">${pct.toFixed(1)}%</span>`;
+}
+
+function pctBg(pct) {
+  if (pct === null) return 'bg-slate-400';
+  return pct >= 95 ? 'bg-emerald-500' : pct >= 85 ? 'bg-amber-400' : 'bg-red-500';
+}
+
+function formatFecha(isoStr) {
+  if (!isoStr) return '—';
+  return new Date(isoStr).toLocaleDateString('es-CL', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+// =====================================================
+// SECCIÓN JS: RENDER NAVBAR
+// =====================================================
+function renderNavbar() {
+  const d = datosActuales;
+  const a = d.auditoria;
+
+  document.getElementById('pct-general-nav').textContent =
+    d.porcentajeGeneral != null ? `${d.porcentajeGeneral.toFixed(1)}%` : '—';
+
+  if (a) {
+    document.getElementById('buses-auditados-nav').textContent =
+      `${a.busesAuditados}/${a.totalBuses}`;
+    document.getElementById('subtitulo-nav').textContent =
+      `${a.nombre}${a.enCurso ? ' · En curso' : ' · Cerrada'}`;
+    const pct = a.pctBusesAuditados || 0;
+    document.getElementById('barra-progreso-nav').style.width = `${pct}%`;
+  } else {
+    document.getElementById('buses-auditados-nav').textContent = '—';
+  }
+}
+
+// =====================================================
+// SECCIÓN JS: RENDER TAB PROGRESO
+// =====================================================
+function renderProgreso() {
+  const d = datosActuales;
+  const a = d.auditoria;
+
+  // Mensaje sin auditorías
+  document.getElementById('msg-sin-auditorias').classList.toggle('hidden', !d.sinAuditoriasDefinidas);
+
+  if (a) {
+    document.getElementById('nombre-auditoria').textContent = a.nombre;
+    document.getElementById('badge-estado').textContent = a.enCurso ? 'EN CURSO' : 'CERRADA';
+    document.getElementById('badge-estado').className = a.enCurso
+      ? 'text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700'
+      : 'text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600';
+
+    const inicio = formatFecha(a.inicio);
+    const cierre = a.cierre ? formatFecha(a.cierre) : 'actualidad';
+    document.getElementById('fechas-auditoria').textContent = `${inicio} → ${cierre}`;
+    document.getElementById('texto-buses-prog').textContent = `${a.busesAuditados} / ${a.totalBuses} buses`;
+    document.getElementById('barra-buses').style.width = `${a.pctBusesAuditados || 0}%`;
+    document.getElementById('pct-general-prog').textContent =
+      d.porcentajeGeneral != null ? `${d.porcentajeGeneral.toFixed(1)}%` : '—';
+    document.getElementById('dias-prog').textContent =
+      a.diasTranscurridos != null ? `${a.diasTranscurridos} días de auditoría` : '';
+  }
+
+  // Tabla historial
+  const tbody = document.getElementById('tbody-historial');
+  tbody.innerHTML = '';
+
+  // Agregar fila de auditoría actual
+  const filas = [];
+  if (a) {
+    filas.push({
+      numero: a.numero, nombre: a.nombre,
+      inicio: a.inicio, cierre: a.cierre,
+      duracionDias: a.diasTranscurridos,
+      busesAuditados: a.busesAuditados, totalBuses: a.totalBuses,
+      porcentajeGeneral: d.porcentajeGeneral,
+      porPestaña: Object.fromEntries(
+        Object.entries(d.tabs || {}).map(([g, v]) => [g, v.porcentajeGeneral])
+      ),
+      esActual: true,
+    });
+  }
+  filas.push(...(d.historial || []));
+
+  if (filas.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">
+      No hay historial disponible. Define auditorías en la hoja "Auditorias" de tu Spreadsheet.
+    </td></tr>`;
+    return;
+  }
+
+  filas.forEach(h => {
+    const tr = document.createElement('tr');
+    tr.className = h.esActual ? 'bg-blue-50' : 'hover:bg-slate-50';
+    const pp = h.porPestaña || {};
+    tr.innerHTML = `
+      <td class="px-4 py-3">
+        <div class="font-semibold text-navy text-sm">${h.nombre || `Auditoría ${h.numero}`}</div>
+        ${h.esActual ? '<span class="text-xs text-emerald-600 font-medium">← Actual</span>' : ''}
+      </td>
+      <td class="px-4 py-3 text-xs text-slate-500">
+        ${formatFecha(h.inicio)} → ${h.cierre ? formatFecha(h.cierre) : '<span class="text-emerald-600 font-medium">En curso</span>'}
+      </td>
+      <td class="px-4 py-3 text-center text-sm">${h.duracionDias != null ? `${h.duracionDias}d` : '—'}</td>
+      <td class="px-4 py-3 text-center text-sm">${h.busesAuditados}/${h.totalBuses}</td>
+      <td class="px-4 py-3 text-center">${pctBadge(h.porcentajeGeneral, 'md')}</td>
+      <td class="px-4 py-3 text-center">${pctBadge(pp['Accesorios'] ?? null, 'sm')}</td>
+      <td class="px-4 py-3 text-center">${pctBadge(pp['Camaras'] ?? null, 'sm')}</td>
+      <td class="px-4 py-3 text-center">${pctBadge(pp['Ruteros'] ?? null, 'sm')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// =====================================================
+// SECCIÓN JS: RENDER TAB GRUPO (Accesorios / Cámaras / Ruteros)
+// =====================================================
+function renderTabGrupo(grupoNombre, tabId) {
+  const contenedor = document.getElementById(`contenido-${tabId}`);
+  if (!contenedor) return;
+
+  const tabData = datosActuales?.tabs?.[grupoNombre];
+
+  if (!tabData) {
+    contenedor.innerHTML = `<div class="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center text-sm text-yellow-700">
+      No hay datos para <strong>${grupoNombre}</strong> en esta auditoría.
+    </div>`;
+    return;
+  }
+
+  const subgrupos = tabData.subgrupos || [];
+  const pctGlobal = tabData.porcentajeGeneral;
+
+  let html = `
+    <!-- KPI del grupo -->
+    <div class="bg-white rounded-2xl shadow p-5 mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h2 class="text-xl font-bold text-navy">${grupoNombre}</h2>
+        <p class="text-slate-500 text-sm">${subgrupos.length} subgrupos evaluados</p>
+      </div>
+      <div class="text-center">
+        ${pctBadge(pctGlobal, 'lg')}
+        <p class="text-xs text-slate-400 mt-1">disponibilidad general</p>
+      </div>
+    </div>
+
+    <!-- Grid de subgrupos -->
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+  `;
+
+  subgrupos.forEach(sg => {
+    const elems = sg.elementos || [];
+    html += `
+      <div class="bg-white rounded-2xl shadow overflow-hidden">
+        <!-- Header subgrupo -->
+        <div class="bg-navy px-4 py-3 flex items-center justify-between">
+          <h3 class="text-white font-semibold text-sm leading-tight flex-1 pr-2">${sg.nombre}</h3>
+          ${pctBadge(sg.porcentaje, 'sm').replace('class="', 'class="bg-white/10 px-2 py-0.5 rounded ')}
+        </div>
+
+        <!-- Barra del subgrupo -->
+        <div class="h-1 bg-slate-200">
+          <div class="${pctBg(sg.porcentaje)} h-1 progress-bar" style="width:${sg.porcentaje ?? 0}%"></div>
+        </div>
+
+        <!-- Lista de elementos -->
+        <div class="divide-y divide-slate-100">
+          ${elems.map(el => renderElementoFila(el, sg.nombre, grupoNombre)).join('')}
+        </div>
+      </div>
+    `;
+  });
+
+  html += `</div>`;
+  contenedor.innerHTML = html;
+}
+
+// =====================================================
+// SECCIÓN JS: RENDER FILA DE ELEMENTO
+// =====================================================
+function renderElementoFila(el, subgrupoNombre, grupoNombre) {
+  const datos = JSON.stringify(el).replace(/"/g, '&quot;');
+  const sgDatos = encodeURIComponent(subgrupoNombre);
+
+  if (el.esAseo) {
+    // Elemento de aseo: muestra promedio con estrellas
+    const estrellas = el.promedio != null
+      ? '★'.repeat(Math.round(el.promedio)) + '☆'.repeat(5 - Math.round(el.promedio))
+      : '—';
+    const colorEst = el.promedio >= 4 ? 'text-emerald-500'
+      : el.promedio >= 3 ? 'text-amber-500' : 'text-red-400';
+
+    return `
+      <div class="elem-row px-4 py-2.5 flex items-center justify-between"
+           onclick="abrirModalAseo(${datos}, '${sgDatos}')">
+        <span class="text-sm text-slate-700 flex-1 pr-2">${el.nombre}</span>
+        <div class="text-right shrink-0">
+          <span class="${colorEst} text-sm font-bold">${el.promedio ?? '—'}</span>
+          <span class="text-slate-300 text-xs ml-1">/5</span>
+          <div class="${colorEst} text-xs tracking-tighter">${estrellas}</div>
+        </div>
+      </div>`;
+  }
+
+  // Elemento binario: muestra porcentaje + barra mini
+  const pct = el.porcentaje;
+  const barColor = pct >= 95 ? 'bg-emerald-500' : pct >= 85 ? 'bg-amber-400' : 'bg-red-500';
+  const nFallidos = el.fallidos?.length || 0;
+
+  return `
+    <div class="elem-row px-4 py-2.5 flex items-center justify-between gap-2"
+         onclick="abrirModal(${datos}, '${sgDatos}')">
+      <div class="flex-1 min-w-0">
+        <p class="text-sm text-slate-700 truncate">${el.nombre}</p>
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <div class="flex-1 max-w-[80px] bg-slate-200 rounded-full h-1.5">
+            <div class="${barColor} h-1.5 rounded-full" style="width:${pct ?? 0}%"></div>
+          </div>
+          ${nFallidos > 0 ? `<span class="text-xs text-red-500 font-medium">${nFallidos} fallas</span>` : ''}
+        </div>
+      </div>
+      <div class="shrink-0 text-right">
+        ${pctBadge(pct, 'sm')}
+      </div>
+    </div>`;
+}
+
+// =====================================================
+// SECCIÓN JS: MODAL - ELEMENTO BINARIO
+// =====================================================
+function abrirModal(el, sgEncoded) {
+  const sg = decodeURIComponent(sgEncoded);
+  document.getElementById('modal-titulo').textContent = el.nombre;
+  document.getElementById('modal-subgrupo').textContent = sg;
+
+  // KPI
+  const pct = el.porcentaje;
+  document.getElementById('modal-pct-badge').innerHTML = pctBadge(pct, 'lg');
+  document.getElementById('modal-detalle-num').textContent =
+    `${el.positivos} operativos de ${el.evaluables} evaluables`;
+  const barraEl = document.getElementById('modal-barra');
+  barraEl.style.width = `${pct ?? 0}%`;
+  barraEl.className = `progress-bar h-2 rounded-full ${pctBg(pct)}`;
+
+  // Buses fallidos
+  document.getElementById('modal-fallidos-section').classList.remove('hidden');
+  document.getElementById('modal-aseo-section').classList.add('hidden');
+  document.getElementById('modal-titulo-fallidos').textContent = 'No Operativos';
+  document.getElementById('modal-count-fallidos').textContent =
+    `(${el.fallidos?.length || 0} buses)`;
+
+  const contenedor = document.getElementById('modal-fallidos');
+  contenedor.innerHTML = '';
+
+  if (!el.fallidos || el.fallidos.length === 0) {
+    contenedor.innerHTML = `<p class="text-emerald-600 text-sm font-medium">✅ Todos los buses operativos</p>`;
+  } else {
+    el.fallidos.forEach(bus => {
+      const span = document.createElement('span');
+      span.className = 'bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full cursor-pointer hover:bg-red-200';
+      span.textContent = bus;
+      span.title = 'Buscar este bus';
+      span.onclick = () => { cerrarModal(); irABuscador(bus); };
+      contenedor.appendChild(span);
+    });
+  }
+
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+// =====================================================
+// SECCIÓN JS: MODAL - ELEMENTO ASEO
+// =====================================================
+function abrirModalAseo(el, sgEncoded) {
+  const sg = decodeURIComponent(sgEncoded);
+  document.getElementById('modal-titulo').textContent = el.nombre;
+  document.getElementById('modal-subgrupo').textContent = sg;
+
+  // KPI aseo
+  document.getElementById('modal-pct-badge').innerHTML =
+    el.promedio != null
+      ? `<span class="text-amber-500 text-4xl font-black">${el.promedio.toFixed(1)}<span class="text-2xl">/5</span></span>`
+      : `<span class="text-slate-400 text-4xl font-black">—</span>`;
+  document.getElementById('modal-detalle-num').textContent =
+    `Promedio de ${el.evaluables} buses evaluados`;
+  document.getElementById('modal-barra-wrap').classList.add('hidden');
+
+  // Distribución
+  document.getElementById('modal-fallidos-section').classList.add('hidden');
+  document.getElementById('modal-aseo-section').classList.remove('hidden');
+
+  const distContenedor = document.getElementById('modal-aseo-dist');
+  distContenedor.innerHTML = '';
+  const dist = el.distribucion || {};
+  const coloresDist = { '1':'bg-red-500','2':'bg-orange-400','3':'bg-amber-400','4':'bg-lime-500','5':'bg-emerald-500' };
+
+  for (let i = 5; i >= 1; i--) {
+    const k = String(i);
+    const count = dist[k] || 0;
+    const pct = el.evaluables > 0 ? (count / el.evaluables * 100) : 0;
+    distContenedor.innerHTML += `
+      <div class="flex items-center gap-2">
+        <span class="text-xs w-8 text-slate-500 text-right">${'★'.repeat(i)}</span>
+        <div class="flex-1 bg-slate-200 rounded-full h-3">
+          <div class="${coloresDist[k]} h-3 rounded-full progress-bar" style="width:${pct}%"></div>
+        </div>
+        <span class="text-xs text-slate-600 w-8">${count}</span>
+      </div>`;
+  }
+
+  document.getElementById('modal-barra-wrap').classList.remove('hidden');
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function cerrarModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+  document.getElementById('modal-barra-wrap').classList.remove('hidden');
+}
+
+// Cerrar modal al hacer clic fuera
+document.getElementById('modal-overlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('modal-overlay')) cerrarModal();
+});
+
+// =====================================================
+// SECCIÓN JS: BUSCADOR POR BUS
+// =====================================================
+function renderSugerenciasBuses() {
+  const contenedor = document.getElementById('sugerencias-buses');
+  const buses = datosActuales?.busesAuditadosList || [];
+  contenedor.innerHTML = '';
+
+  if (buses.length === 0) return;
+
+  buses.slice(0, 50).forEach(bus => {
+    const btn = document.createElement('button');
+    btn.className = 'bg-slate-100 hover:bg-navy hover:text-white text-slate-600 text-xs px-2.5 py-1 rounded-full transition font-medium';
+    btn.textContent = bus;
+    btn.onclick = () => irABuscador(bus);
+    contenedor.appendChild(btn);
+  });
+
+  if (buses.length > 50) {
+    contenedor.innerHTML += `<span class="text-slate-400 text-xs self-center">... y ${buses.length - 50} más</span>`;
+  }
+}
+
+async function buscarBus() {
+  const busNum = document.getElementById('input-bus').value.trim();
+  if (!busNum) return;
+
+  const resultadoEl = document.getElementById('resultado-bus');
+  const noEncontrado = document.getElementById('bus-no-encontrado');
+  resultadoEl.classList.add('hidden');
+  noEncontrado.classList.add('hidden');
+  resultadoEl.innerHTML = `<div class="flex justify-center py-8"><div class="spinner"></div></div>`;
+  resultadoEl.classList.remove('hidden');
+
+  try {
+    const sel = document.getElementById('sel-auditoria');
+    const numAud = sel.value || '';
+    const url = numAud ? `/api/bus/${busNum}?auditoria=${numAud}` : `/api/bus/${busNum}`;
+    const resp = await fetch(url);
+
+    if (resp.status === 404) {
+      resultadoEl.classList.add('hidden');
+      noEncontrado.classList.remove('hidden');
+      return;
+    }
+    if (!resp.ok) throw new Error(`Error ${resp.status}`);
+
+    const bus = await resp.json();
+    renderDetalleBus(bus);
+  } catch (e) {
+    resultadoEl.innerHTML = `<div class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-600">
+      Error: ${e.message}
+    </div>`;
+  }
+}
+
+function renderDetalleBus(bus) {
+  const resultadoEl = document.getElementById('resultado-bus');
+
+  // Agrupar elementos por grupo > subgrupo
+  const grupos = {};
+  (bus.elementos || []).forEach(el => {
+    if (!grupos[el.grupo]) grupos[el.grupo] = {};
+    if (!grupos[el.grupo][el.subgrupo]) grupos[el.grupo][el.subgrupo] = [];
+    grupos[el.grupo][el.subgrupo].push(el);
+  });
+
+  let html = `
+    <!-- Info del bus -->
+    <div class="bg-navy text-white rounded-2xl p-5 mb-5 flex flex-wrap gap-4 items-center">
+      <div class="text-4xl">🚌</div>
+      <div>
+        <h3 class="text-2xl font-black">N° ${bus.nInterno}</h3>
+        <p class="text-blue-300 text-sm">${bus.modelo || '—'} · ${bus.estandar || '—'}</p>
+        <p class="text-blue-400 text-xs">Auditado: ${bus.fechaAuditoria ? new Date(bus.fechaAuditoria).toLocaleDateString('es-CL', {day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</p>
+      </div>
+    </div>
+  `;
+
+  Object.entries(grupos).forEach(([grupo, subgrupos]) => {
+    html += `<div class="bg-white rounded-2xl shadow mb-4 overflow-hidden">
+      <div class="bg-navy-light px-5 py-3">
+        <h4 class="text-white font-bold text-sm">${grupo}</h4>
+      </div>`;
+
+    Object.entries(subgrupos).forEach(([sg, elems]) => {
+      html += `<div class="px-5 py-3 border-b border-slate-100 last:border-0">
+        <h5 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">${sg}</h5>
+        <div class="space-y-1">`;
+
+      elems.forEach(el => {
+        let badgeHtml;
+        if (!el.valor) {
+          badgeHtml = `<span class="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">N/A</span>`;
+        } else if (el.esAseo) {
+          const score = parseFloat(el.valor);
+          const colorEst = score >= 4 ? 'bg-emerald-100 text-emerald-700' : score >= 3 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700';
+          badgeHtml = `<span class="text-xs ${colorEst} font-bold px-2 py-0.5 rounded-full">${el.valor}/5</span>`;
+        } else if (el.valor.toLowerCase() === 'operativo') {
+          badgeHtml = `<span class="text-xs bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">✓ Operativo</span>`;
+        } else {
+          badgeHtml = `<span class="text-xs bg-red-100 text-red-700 font-medium px-2 py-0.5 rounded-full" title="${el.valor}">✗ ${el.valor.length > 25 ? el.valor.substring(0,25)+'…' : el.valor}</span>`;
+        }
+
+        html += `<div class="flex items-center justify-between gap-2 py-0.5">
+          <span class="text-sm text-slate-700 flex-1">${el.elemento}</span>
+          ${badgeHtml}
+        </div>`;
+      });
+
+      html += `</div></div>`;
+    });
+
+    html += `</div>`;
+  });
+
+  resultadoEl.innerHTML = html;
+  resultadoEl.classList.remove('hidden');
+}
+
+function irABuscador(busNum) {
+  document.getElementById('input-bus').value = busNum;
+  const buscadorBtn = document.querySelector('[onclick*="buscador"]');
+  if (buscadorBtn) buscadorBtn.click();
+  buscarBus();
+}
+
+// Activar el primer tab (Progreso) al cargar
+document.querySelector('.tab-btn').click();
+</script>
+</body>
+</html>
