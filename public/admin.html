@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — Períodos de Auditoría</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: {
+        navy: { DEFAULT: '#0f2744', light: '#1a3a5c' },
+        gold: { DEFAULT: '#f5a623' },
+      }}}
+    }
+  </script>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans">
+
+<!-- Header -->
+<header class="bg-navy text-white shadow-lg">
+  <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+    <div>
+      <h1 class="text-lg font-bold">Gestión de Períodos de Auditoría</h1>
+      <p class="text-blue-300 text-xs">Panel de administración — Patio Catemito</p>
+    </div>
+    <a href="/" class="text-xs bg-gold text-navy font-bold px-3 py-1.5 rounded hover:opacity-90 transition">
+      ← Volver al dashboard
+    </a>
+  </div>
+</header>
+
+<main class="max-w-4xl mx-auto px-4 py-8">
+
+  <!-- Selector de catastro -->
+  <div class="flex gap-2 mb-6">
+    <button id="btn-flota" onclick="seleccionarCatastro('flota')"
+      class="catastro-btn activo px-4 py-2 rounded-lg text-sm font-semibold border-2 border-navy bg-navy text-white transition">
+      🚌 Flota
+    </button>
+    <button id="btn-senyaletica" onclick="seleccionarCatastro('senyaletica')"
+      class="catastro-btn px-4 py-2 rounded-lg text-sm font-semibold border-2 border-navy text-navy bg-white transition hover:bg-navy hover:text-white">
+      🪧 Señalética
+    </button>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-6">
+
+    <!-- Lista de auditorías existentes -->
+    <div class="bg-white rounded-2xl shadow p-6">
+      <h2 class="font-bold text-navy text-lg mb-1">Auditorías registradas</h2>
+      <p id="nombre-catastro" class="text-slate-400 text-xs mb-4">—</p>
+      <div id="lista-auditorias">
+        <div class="text-slate-400 text-sm text-center py-8">Cargando...</div>
+      </div>
+    </div>
+
+    <!-- Formulario nueva auditoría -->
+    <div class="bg-white rounded-2xl shadow p-6">
+      <h2 class="font-bold text-navy text-lg mb-4">Agregar nueva auditoría</h2>
+
+      <form id="form-auditoria" onsubmit="guardarAuditoria(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">N° de auditoría</label>
+          <input id="f-numero" type="number" min="1" required placeholder="Ej: 7"
+            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-navy" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Nombre</label>
+          <input id="f-nombre" type="text" required placeholder="Ej: Auditoría 7 - Mar 2026"
+            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-navy" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Fecha inicio</label>
+            <input id="f-inicio" type="date" required
+              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-navy" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Fecha cierre</label>
+            <input id="f-cierre" type="date" required
+              class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-navy" />
+          </div>
+        </div>
+
+        <div id="msg-resultado" class="hidden rounded-lg px-4 py-3 text-sm font-medium"></div>
+
+        <button type="submit" id="btn-guardar"
+          class="w-full bg-navy text-white font-bold py-2.5 rounded-lg text-sm hover:bg-navy-light transition">
+          Guardar auditoría
+        </button>
+      </form>
+
+      <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+        <strong>Requisito:</strong> la Service Account debe tener rol <strong>Editor</strong>
+        en el Google Sheet (no solo Lector) para poder escribir.
+      </div>
+    </div>
+  </div>
+
+  <!-- Referencia de nombres normalizados -->
+  <div class="bg-white rounded-2xl shadow p-6 mt-6">
+    <h2 class="font-bold text-navy text-lg mb-3">Referencia — nombres normalizados por período</h2>
+    <p class="text-xs text-slate-500 mb-4">Usa estos nombres para que ambos catastros sean comparables en el dashboard.</p>
+    <div class="overflow-auto">
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-navy text-white">
+            <th class="px-4 py-2 text-left rounded-tl-lg">Período</th>
+            <th class="px-4 py-2 text-left">Nombre sugerido</th>
+            <th class="px-4 py-2 text-left">Flota</th>
+            <th class="px-4 py-2 text-left rounded-tr-lg">Señalética</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr class="hover:bg-slate-50"><td class="px-4 py-2 font-medium">Sep/Oct 2025</td><td class="px-4 py-2 text-slate-600">Auditoría 1 - Sep/Oct 2025</td><td class="px-4 py-2 text-slate-500">Aud 1 · 26/09→03/10</td><td class="px-4 py-2 text-slate-500">Aud 1 · 24/09→03/10</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-2 font-medium">Oct 2025</td><td class="px-4 py-2 text-slate-600">Auditoría 2 - Oct 2025</td><td class="px-4 py-2 text-slate-500">Aud 2 · 13/10→21/10</td><td class="px-4 py-2 text-slate-500">Aud 2 · 09/10→23/10</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-2 font-medium">Nov 2025</td><td class="px-4 py-2 text-slate-600">Auditoría 3 - Nov 2025</td><td class="px-4 py-2 text-slate-500">Aud 3 · 05/11→08/11</td><td class="px-4 py-2 text-slate-500">Aud 3 · 01/11→09/11</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-2 font-medium">Nov/Dic 2025</td><td class="px-4 py-2 text-slate-600">Auditoría 4 - Nov/Dic 2025</td><td class="px-4 py-2 text-slate-500">Aud 4 · 27/11→01/12</td><td class="px-4 py-2 text-slate-500">Aud 4 · 19/11→02/12</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-2 font-medium">Dic 2025</td><td class="px-4 py-2 text-slate-600">Auditoría 5 - Dic 2025</td><td class="px-4 py-2 text-amber-600 text-xs">Sin ciclo</td><td class="px-4 py-2 text-slate-500">Aud 5 · 15/12→27/12</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-2 font-medium">Ene 2026</td><td class="px-4 py-2 text-slate-600">Auditoría 6 - Ene 2026</td><td class="px-4 py-2 text-slate-500">Aud 5 · 11/01→14/01</td><td class="px-4 py-2 text-slate-500">Aud 6 · 27/01→30/01</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-2 font-medium">Feb 2026</td><td class="px-4 py-2 text-slate-600">Auditoría 7 - Feb 2026</td><td class="px-4 py-2 text-slate-500">Aud 6 · 22/02→24/02</td><td class="px-4 py-2 text-slate-500">Aud 7 · 16/02→24/02</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+let catastroActual = 'flota';
+
+function seleccionarCatastro(id) {
+  catastroActual = id;
+  document.querySelectorAll('.catastro-btn').forEach(b => {
+    b.classList.remove('activo', 'bg-navy', 'text-white');
+    b.classList.add('bg-white', 'text-navy');
+  });
+  const btn = document.getElementById(`btn-${id}`);
+  btn.classList.add('activo', 'bg-navy', 'text-white');
+  btn.classList.remove('bg-white', 'text-navy');
+  cargarAuditorias();
+}
+
+async function cargarAuditorias() {
+  const lista = document.getElementById('lista-auditorias');
+  lista.innerHTML = '<div class="text-slate-400 text-sm text-center py-8">Cargando...</div>';
+
+  try {
+    const resp = await fetch(`/admin/api/auditorias?catastro=${catastroActual}`);
+    const data = await resp.json();
+    document.getElementById('nombre-catastro').textContent = data.catastro || '';
+
+    if (!data.auditorias?.length) {
+      lista.innerHTML = '<div class="text-slate-400 text-sm text-center py-8">No hay auditorías registradas.</div>';
+      return;
+    }
+
+    lista.innerHTML = `<div class="divide-y divide-slate-100">
+      ${data.auditorias.map(a => `
+        <div class="py-3 flex items-start justify-between gap-2">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold bg-navy text-white px-2 py-0.5 rounded"># ${a.numero}</span>
+              <span class="font-semibold text-sm text-navy">${a.nombre}</span>
+              ${a.enCurso ? '<span class="text-xs bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">EN CURSO</span>' : ''}
+            </div>
+            <p class="text-xs text-slate-400 mt-0.5">
+              ${a.inicio ? fmtFecha(a.inicio) : '?'} → ${a.cierre ? fmtFecha(a.cierre) : '?'}
+            </p>
+          </div>
+        </div>
+      `).join('')}
+    </div>`;
+  } catch (e) {
+    lista.innerHTML = `<div class="text-red-500 text-sm text-center py-4">Error: ${e.message}</div>`;
+  }
+}
+
+function fmtFecha(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+async function guardarAuditoria(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-guardar');
+  const msg = document.getElementById('msg-resultado');
+
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+  msg.classList.add('hidden');
+
+  try {
+    const resp = await fetch('/admin/api/auditoria', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        catastro: catastroActual,
+        numero:   parseInt(document.getElementById('f-numero').value),
+        nombre:   document.getElementById('f-nombre').value.trim(),
+        inicio:   document.getElementById('f-inicio').value,
+        cierre:   document.getElementById('f-cierre').value,
+      }),
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Error desconocido');
+
+    msg.className = 'rounded-lg px-4 py-3 text-sm font-medium bg-emerald-50 text-emerald-700 border border-emerald-200';
+    msg.textContent = '✓ Auditoría guardada correctamente en Google Sheets.';
+    msg.classList.remove('hidden');
+    document.getElementById('form-auditoria').reset();
+    setTimeout(() => cargarAuditorias(), 1000);
+
+  } catch (err) {
+    msg.className = 'rounded-lg px-4 py-3 text-sm font-medium bg-red-50 text-red-700 border border-red-200';
+    msg.textContent = `Error: ${err.message}`;
+    msg.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Guardar auditoría';
+  }
+}
+
+// Iniciar
+cargarAuditorias();
+</script>
+</body>
+</html>

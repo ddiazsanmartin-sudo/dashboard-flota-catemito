@@ -8,7 +8,7 @@ require('dotenv').config();
 const express   = require('express');
 const path      = require('path');
 const basicAuth = require('express-basic-auth');
-const { readSheet }                      = require('./lib/sheets');
+const { readSheet, appendRow }               = require('./lib/sheets');
 const { procesarDashboard, parseAuditorias } = require('./lib/processor');
 const cache   = require('./lib/cache');
 
@@ -87,6 +87,7 @@ if (process.env.DASHBOARD_USERS) {
 // SECCIÓN: SERVIR ARCHIVOS ESTÁTICOS
 // La carpeta /public contiene el index.html del dashboard.
 // ============================================================
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================
@@ -232,6 +233,62 @@ app.get('/api/refresh', (req, res) => {
   } else {
     cache.invalidateAll();
     res.json({ ok: true, mensaje: 'Caché limpiado. Próxima carga traerá datos frescos de Sheets.' });
+  }
+});
+
+// ============================================================
+// SECCIÓN: ADMIN — gestión de períodos de auditoría
+// GET  /admin                     → página HTML de admin
+// GET  /admin/api/auditorias      → lista de auditorías por catastro
+// POST /admin/api/auditoria       → agrega nueva auditoría al Sheet
+// DELETE /admin/api/cache         → limpia caché
+// ============================================================
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+app.get('/admin/api/auditorias', async (req, res) => {
+  try {
+    const catastroId = req.query.catastro || 'flota';
+    const catastro   = getCatastro(catastroId);
+    const audRows    = await readSheet(catastro.hojas.AUDITORIAS, catastro.spreadsheetId).catch(() => []);
+    const auditorias = parseAuditorias(audRows).map(a => ({
+      numero:  a.numero,
+      nombre:  a.nombre,
+      inicio:  a.inicio  ? a.inicio.toISOString().split('T')[0]  : null,
+      cierre:  a.cierre  ? a.cierre.toISOString().split('T')[0]  : null,
+      enCurso: a.enCurso,
+    }));
+    res.json({ catastro: catastro.nombre, auditorias });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/admin/api/auditoria', async (req, res) => {
+  try {
+    const { catastro: catastroId, numero, nombre, inicio, cierre } = req.body;
+    if (!numero || !nombre || !inicio || !cierre) {
+      return res.status(400).json({ error: 'Faltan campos: numero, nombre, inicio, cierre' });
+    }
+    const catastro = getCatastro(catastroId || 'flota');
+    // Formato DD/MM/YYYY para que Sheets lo entienda como fecha
+    const fmtFecha = iso => {
+      const [y, m, d] = iso.split('-');
+      return `${d}/${m}/${y}`;
+    };
+    await appendRow(
+      catastro.hojas.AUDITORIAS,
+      [Number(numero), fmtFecha(inicio), fmtFecha(cierre), nombre],
+      catastro.spreadsheetId
+    );
+    // Invalidar caché para que el dashboard refleje el cambio
+    cache.invalidateByPrefix(`dashboard_${catastroId}`);
+    cache.invalidateByPrefix(`auditorias_lista_${catastroId}`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[/admin/api/auditoria]', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

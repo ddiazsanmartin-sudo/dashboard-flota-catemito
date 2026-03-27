@@ -1219,7 +1219,7 @@ function renderDetalleBus(bus) {
     <!-- Info del bus -->
     <div class="${busesNoEnFlota.has(bus.nInterno) ? 'bg-slate-500' : 'bg-navy'} text-white rounded-2xl p-5 mb-5 flex flex-wrap gap-4 items-center">
       <div class="text-4xl">${busesNoEnFlota.has(bus.nInterno) ? '🚫' : '🚌'}</div>
-      <div>
+      <div class="flex-1">
         <div class="flex items-center gap-2 flex-wrap">
           <h3 class="text-2xl font-black">N° ${bus.nInterno}</h3>
           ${busesNoEnFlota.has(bus.nInterno)
@@ -1230,6 +1230,14 @@ function renderDetalleBus(bus) {
         <p class="text-blue-300 text-sm">${bus.modelo || '—'} · ${bus.estandar || '—'}</p>
         <p class="text-blue-400 text-xs">Auditado: ${bus.fechaAuditoria ? new Date(bus.fechaAuditoria).toLocaleDateString('es-CL', {day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</p>
       </div>
+      <!-- Porcentaje total del bus -->
+      ${bus.porcentajeTotal != null ? `
+      <div class="text-center border-l border-white/20 pl-5">
+        <div class="text-4xl font-black ${bus.porcentajeTotal >= 95 ? 'text-emerald-400' : bus.porcentajeTotal >= 85 ? 'text-yellow-400' : 'text-red-400'}">
+          ${bus.porcentajeTotal}%
+        </div>
+        <div class="text-xs text-blue-300 mt-0.5">cumplimiento</div>
+      </div>` : ''}
     </div>
   `;
 
@@ -1276,9 +1284,15 @@ function renderDetalleBus(bus) {
 
 function irABuscador(busNum) {
   document.getElementById('input-bus').value = busNum;
-  const buscadorBtn = document.querySelector('[onclick*="buscador"]');
-  if (buscadorBtn) buscadorBtn.click();
-  buscarBus();
+  // Cambiar al tab buscador si no está activo
+  const buscadorBtn = document.getElementById('tab-btn-buscador');
+  if (buscadorBtn && !buscadorBtn.classList.contains('active')) buscadorBtn.click();
+  buscarBus().then(() => {
+    // Hacer scroll al resultado
+    setTimeout(() => {
+      document.getElementById('resultado-bus')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  });
 }
 
 // Activar el primer tab (Progreso) al cargar
