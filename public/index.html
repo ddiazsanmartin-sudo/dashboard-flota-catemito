@@ -400,9 +400,10 @@ async function cargarDashboard() {
 function mostrarCarga(activo) {
   document.getElementById('estado-carga').classList.toggle('hidden', !activo);
   document.getElementById('estado-error').classList.add('hidden');
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.toggle('hidden', activo));
-  if (activo) {
-    // Asegurarse de mostrar el tab activo al terminar
+  // Siempre ocultamos todos los tabs; solo al terminar mostramos el activo
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  if (!activo) {
+    // Al terminar la carga, re-mostrar solo el tab que está seleccionado
     const tabActivo = document.querySelector('.tab-btn.active');
     if (tabActivo) tabActivo.click();
   }
