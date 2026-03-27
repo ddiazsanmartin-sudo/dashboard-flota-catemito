@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard Flota Catemito</title>
+  <title>Catastro detallado - Catemito</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -63,9 +63,11 @@
   <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
     <!-- Logo y título -->
     <div class="flex items-center gap-3">
-      <img src="/logo.png" alt="Subus" class="h-9" style="filter: brightness(0) invert(1);" />
+      <div class="bg-white rounded-lg px-2 py-1">
+        <img src="/logo.png" alt="Subus" class="h-8" />
+      </div>
       <div>
-        <h1 class="text-lg font-bold leading-tight">Dashboard Flota Catemito</h1>
+        <h1 class="text-lg font-bold leading-tight">Catastro detallado - Catemito</h1>
         <p class="text-xs text-blue-300" id="subtitulo-nav">Cargando datos...</p>
       </div>
     </div>
@@ -146,33 +148,22 @@
   ===================================================== -->
   <div id="tab-progreso" class="tab-content hidden">
 
-    <!-- Card: auditoría actual -->
+    <!-- Card: auditoría actual - solo progreso -->
     <div id="card-auditoria-actual" class="bg-white rounded-2xl shadow p-6 mb-6">
-      <div class="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div class="flex items-center gap-2 mb-1">
-            <span id="badge-estado" class="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">EN CURSO</span>
-            <h2 id="nombre-auditoria" class="text-xl font-bold text-navy">—</h2>
-          </div>
-          <p id="fechas-auditoria" class="text-slate-500 text-sm mb-4">—</p>
-
-          <!-- Progreso buses -->
-          <div class="mb-2 flex items-center justify-between">
-            <span class="text-sm font-medium text-slate-600">Buses auditados</span>
-            <span id="texto-buses-prog" class="text-sm font-bold text-navy">—</span>
-          </div>
-          <div class="w-full bg-slate-200 rounded-full h-3 mb-4">
-            <div id="barra-buses" class="progress-bar h-3 rounded-full bg-gold" style="width:0%"></div>
-          </div>
-        </div>
-
-        <!-- KPI grande -->
-        <div class="text-center bg-slate-50 rounded-xl px-8 py-4 min-w-[140px]">
-          <div id="pct-general-prog" class="text-5xl font-black text-navy">—</div>
-          <div class="text-xs text-slate-500 mt-1">% Estado general</div>
-          <div id="dias-prog" class="text-sm font-medium text-gold mt-2">—</div>
-        </div>
+      <div class="flex items-center gap-2 mb-1">
+        <span id="badge-estado" class="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">EN CURSO</span>
+        <h2 id="nombre-auditoria" class="text-xl font-bold text-navy">—</h2>
       </div>
+      <p id="fechas-auditoria" class="text-slate-500 text-sm mb-4">—</p>
+
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-medium text-slate-600">Buses auditados</span>
+        <span id="texto-buses-prog" class="text-sm font-bold text-navy">—</span>
+      </div>
+      <div class="w-full bg-slate-200 rounded-full h-4 mb-1">
+        <div id="barra-buses" class="progress-bar h-4 rounded-full bg-gold" style="width:0%"></div>
+      </div>
+      <p id="pct-buses-label" class="text-right text-xs text-slate-400 mt-0.5"></p>
     </div>
 
     <!-- Mensaje sin auditorías -->
@@ -186,7 +177,27 @@
       <p class="text-yellow-600 text-sm mt-1">Mostrando todos los datos disponibles.</p>
     </div>
 
-    <!-- Tabla histórico de auditorías -->
+    <!-- Buses pendientes -->
+    <div class="bg-white rounded-2xl shadow overflow-hidden mb-6">
+      <div class="bg-amber-500 px-6 py-3 flex items-center justify-between">
+        <h3 class="text-white font-bold text-sm">⏳ Buses pendientes de auditar</h3>
+        <span id="count-pendientes" class="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full">0</span>
+      </div>
+      <div id="lista-pendientes" class="p-4 flex flex-wrap gap-2 min-h-[52px]">
+        <p class="text-emerald-600 font-semibold text-sm flex items-center gap-1">✅ ¡Todos los buses han sido auditados!</p>
+      </div>
+    </div>
+
+    <!-- Buses auditados -->
+    <div class="bg-white rounded-2xl shadow overflow-hidden mb-6">
+      <div class="bg-emerald-600 px-6 py-3 flex items-center justify-between">
+        <h3 class="text-white font-bold text-sm">✅ Buses auditados</h3>
+        <span id="count-auditados" class="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full">0</span>
+      </div>
+      <div id="lista-auditados" class="p-4 flex flex-wrap gap-2 min-h-[52px]"></div>
+    </div>
+
+    <!-- Historial simplificado (solo conteos, sin %) -->
     <div id="card-historial" class="bg-white rounded-2xl shadow overflow-hidden">
       <div class="bg-navy px-6 py-3">
         <h3 class="text-white font-bold text-sm">📅 Historial de Auditorías</h3>
@@ -198,11 +209,8 @@
               <th class="px-4 py-3 text-left font-semibold">Auditoría</th>
               <th class="px-4 py-3 text-left font-semibold">Período</th>
               <th class="px-4 py-3 text-center font-semibold">Días</th>
-              <th class="px-4 py-3 text-center font-semibold">Buses</th>
-              <th class="px-4 py-3 text-center font-semibold">% General</th>
-              <th class="px-4 py-3 text-center font-semibold">Accesorios</th>
-              <th class="px-4 py-3 text-center font-semibold">Cámaras</th>
-              <th class="px-4 py-3 text-center font-semibold">Ruteros</th>
+              <th class="px-4 py-3 text-center font-semibold">Buses auditados</th>
+              <th class="px-4 py-3 text-center font-semibold">Cobertura</th>
             </tr>
           </thead>
           <tbody id="tbody-historial" class="divide-y divide-slate-100">
@@ -462,6 +470,8 @@ function renderNavbar() {
 
 // =====================================================
 // SECCIÓN JS: RENDER TAB PROGRESO
+// Solo muestra progreso de cobertura (cuántos y cuáles buses),
+// sin porcentajes de resultados (eso va en las otras pestañas).
 // =====================================================
 function renderProgreso() {
   const d = datosActuales;
@@ -482,17 +492,34 @@ function renderProgreso() {
     document.getElementById('fechas-auditoria').textContent = `${inicio} → ${cierre}`;
     document.getElementById('texto-buses-prog').textContent = `${a.busesAuditados} / ${a.totalBuses} buses`;
     document.getElementById('barra-buses').style.width = `${a.pctBusesAuditados || 0}%`;
-    document.getElementById('pct-general-prog').textContent =
-      d.porcentajeGeneral != null ? `${d.porcentajeGeneral.toFixed(1)}%` : '—';
-    document.getElementById('dias-prog').textContent =
-      a.diasTranscurridos != null ? `${a.diasTranscurridos} días de auditoría` : '';
+    document.getElementById('pct-buses-label').textContent =
+      a.pctBusesAuditados != null ? `${a.pctBusesAuditados.toFixed(1)}% completado` : '';
   }
 
-  // Tabla historial
+  // --- Buses pendientes ---
+  const pendientes = d.busesPendientesList || [];
+  const listaPend = document.getElementById('lista-pendientes');
+  document.getElementById('count-pendientes').textContent = pendientes.length;
+  if (pendientes.length === 0) {
+    listaPend.innerHTML = `<p class="text-emerald-600 font-semibold text-sm flex items-center gap-1">✅ ¡Todos los buses han sido auditados!</p>`;
+  } else {
+    listaPend.innerHTML = pendientes.map(b =>
+      `<span class="bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold px-2 py-1 rounded">${b}</span>`
+    ).join('');
+  }
+
+  // --- Buses auditados ---
+  const auditados = d.busesAuditadosList || [];
+  const listaAud = document.getElementById('lista-auditados');
+  document.getElementById('count-auditados').textContent = auditados.length;
+  listaAud.innerHTML = auditados.map(b =>
+    `<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-2 py-1 rounded">${b}</span>`
+  ).join('');
+
+  // --- Tabla historial (solo cobertura, sin %) ---
   const tbody = document.getElementById('tbody-historial');
   tbody.innerHTML = '';
 
-  // Agregar fila de auditoría actual
   const filas = [];
   if (a) {
     filas.push({
@@ -500,17 +527,21 @@ function renderProgreso() {
       inicio: a.inicio, cierre: a.cierre,
       duracionDias: a.diasTranscurridos,
       busesAuditados: a.busesAuditados, totalBuses: a.totalBuses,
-      porcentajeGeneral: d.porcentajeGeneral,
-      porPestaña: Object.fromEntries(
-        Object.entries(d.tabs || {}).map(([g, v]) => [g, v.porcentajeGeneral])
-      ),
+      pctBuses: a.pctBusesAuditados,
       esActual: true,
     });
   }
-  filas.push(...(d.historial || []));
+  (d.historial || []).forEach(h => filas.push({
+    numero: h.numero, nombre: h.nombre,
+    inicio: h.inicio, cierre: h.cierre,
+    duracionDias: h.duracionDias,
+    busesAuditados: h.busesAuditados, totalBuses: h.totalBuses,
+    pctBuses: h.totalBuses > 0 ? Math.round((h.busesAuditados / h.totalBuses) * 1000) / 10 : null,
+    esActual: false,
+  }));
 
   if (filas.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400 text-sm">
+    tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 text-sm">
       No hay historial disponible. Define auditorías en la hoja "Auditorias" de tu Spreadsheet.
     </td></tr>`;
     return;
@@ -519,7 +550,14 @@ function renderProgreso() {
   filas.forEach(h => {
     const tr = document.createElement('tr');
     tr.className = h.esActual ? 'bg-blue-50' : 'hover:bg-slate-50';
-    const pp = h.porPestaña || {};
+    const pctBar = h.pctBuses != null
+      ? `<div class="flex items-center gap-2">
+           <div class="flex-1 bg-slate-200 rounded-full h-2 min-w-[60px]">
+             <div class="bg-gold h-2 rounded-full progress-bar" style="width:${h.pctBuses}%"></div>
+           </div>
+           <span class="text-xs font-bold text-slate-600 w-10 text-right">${h.pctBuses.toFixed(0)}%</span>
+         </div>`
+      : '—';
     tr.innerHTML = `
       <td class="px-4 py-3">
         <div class="font-semibold text-navy text-sm">${h.nombre || `Auditoría ${h.numero}`}</div>
@@ -528,12 +566,9 @@ function renderProgreso() {
       <td class="px-4 py-3 text-xs text-slate-500">
         ${formatFecha(h.inicio)} → ${h.cierre ? formatFecha(h.cierre) : '<span class="text-emerald-600 font-medium">En curso</span>'}
       </td>
-      <td class="px-4 py-3 text-center text-sm">${h.duracionDias != null ? `${h.duracionDias}d` : '—'}</td>
-      <td class="px-4 py-3 text-center text-sm">${h.busesAuditados}/${h.totalBuses}</td>
-      <td class="px-4 py-3 text-center">${pctBadge(h.porcentajeGeneral, 'md')}</td>
-      <td class="px-4 py-3 text-center">${pctBadge(pp['Accesorios'] ?? null, 'sm')}</td>
-      <td class="px-4 py-3 text-center">${pctBadge(pp['Camaras'] ?? null, 'sm')}</td>
-      <td class="px-4 py-3 text-center">${pctBadge(pp['Ruteros'] ?? null, 'sm')}</td>
+      <td class="px-4 py-3 text-center text-sm text-slate-600">${h.duracionDias != null ? `${h.duracionDias}d` : '—'}</td>
+      <td class="px-4 py-3 text-center text-sm font-semibold text-navy">${h.busesAuditados} / ${h.totalBuses}</td>
+      <td class="px-4 py-3 min-w-[140px]">${pctBar}</td>
     `;
     tbody.appendChild(tr);
   });
