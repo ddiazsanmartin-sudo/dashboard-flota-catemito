@@ -974,7 +974,7 @@ function renderTendencias() {
 
   // — Heatmap —
   html += `<div class="bg-white rounded-2xl shadow p-5 mb-6">
-    <h2 class="text-lg font-bold text-navy mb-1">🗺 Mapa de calor — Buses × Subgrupo</h2>
+    <h2 class="text-lg font-bold text-navy mb-1">Mapa de calor — Buses × Subgrupo</h2>
     <p class="text-xs text-slate-400 mb-4">Auditoría actual · 🟢 ≥95% · 🟡 85-94% · 🔴 &lt;85% · ⬜ Sin datos</p>
     <div id="contenedor-heatmap" class="overflow-auto max-h-[600px]"></div>
   </div>`;
@@ -1106,28 +1106,18 @@ function renderHeatmap() {
     return             'background:#fee2e2;color:#991b1b';
   }
 
-  // Encabezado vertical: texto rotado -90° dentro de celda de altura fija
-  const thVertical = (s) =>
-    `<th title="${s}" style="min-width:42px;width:42px;height:120px;padding:0;vertical-align:bottom;background:#0f2744">
-       <div style="display:flex;justify-content:center;align-items:flex-end;height:100%;padding-bottom:6px">
-         <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:600;
-                      color:#fff;white-space:nowrap;overflow:hidden;max-height:108px;display:block">${s}</span>
-       </div>
-     </th>`;
+  // Estilos base reutilizables
+  const thBase  = 'position:sticky;top:0;z-index:2;padding:8px 6px;font-size:10px;font-weight:700;text-align:center;white-space:nowrap;border-bottom:2px solid #1a3a5c';
+  const thLeft  = `${thBase};left:0;z-index:4;text-align:left;background:#0f2744;color:#fff;min-width:62px`;
+  const thMid   = `${thBase};background:#0f2744;color:#fff;min-width:80px`;
+  const thRight = `${thBase};right:0;z-index:4;background:#1a3a5c;color:#f5a623;min-width:74px`;
 
   let html = `<table style="border-collapse:collapse;font-size:11px">
     <thead>
       <tr>
-        <th style="padding:6px 10px;text-align:left;color:#fff;white-space:nowrap;
-                   position:sticky;left:0;top:0;background:#0f2744;z-index:4;min-width:60px">Bus</th>
-        ${subgrupos.map(s => thVertical(s)).join('')}
-        <th style="min-width:54px;width:54px;height:120px;padding:0;vertical-align:bottom;
-                   background:#1a3a5c;position:sticky;right:0;z-index:2">
-          <div style="display:flex;justify-content:center;align-items:flex-end;height:100%;padding-bottom:6px">
-            <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:700;
-                         color:#f5a623;white-space:nowrap;overflow:hidden;max-height:108px;display:block">TOTAL BUS</span>
-          </div>
-        </th>
+        <th style="${thLeft}">Bus</th>
+        ${subgrupos.map(s => `<th style="${thMid}" title="${s}">${s}</th>`).join('')}
+        <th style="${thRight}">Total bus</th>
       </tr>
     </thead>
     <tbody>`;
@@ -1145,7 +1135,7 @@ function renderHeatmap() {
                      border:1px solid #f1f5f9" title="${sg}: ${txt}">${txt}</td>`;
       }).join('')}
       <td style="${cellColor(tot)};padding:4px 8px;text-align:center;font-weight:700;font-size:12px;
-                 border:2px solid #e2e8f0;position:sticky;right:0;z-index:1"
+                 border-left:2px solid #e2e8f0;position:sticky;right:0;z-index:1"
           title="Cumplimiento total del bus">
         ${tot != null ? tot+'%' : '—'}
       </td>
