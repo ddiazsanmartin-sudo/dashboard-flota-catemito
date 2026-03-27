@@ -8,7 +8,7 @@ require('dotenv').config();
 const express   = require('express');
 const path      = require('path');
 const basicAuth = require('express-basic-auth');
-const { readSheet, appendRow }               = require('./lib/sheets');
+const { readSheet, appendRow, updateCell }   = require('./lib/sheets');
 const { procesarDashboard, parseAuditorias } = require('./lib/processor');
 const cache   = require('./lib/cache');
 
@@ -268,18 +268,19 @@ app.get('/admin/api/auditorias', async (req, res) => {
 app.post('/admin/api/auditoria', async (req, res) => {
   try {
     const { catastro: catastroId, numero, nombre, inicio, cierre } = req.body;
-    if (!numero || !nombre || !inicio || !cierre) {
-      return res.status(400).json({ error: 'Faltan campos: numero, nombre, inicio, cierre' });
+    if (!numero || !nombre || !inicio) {
+      return res.status(400).json({ error: 'Faltan campos: numero, nombre, inicio' });
     }
     const catastro = getCatastro(catastroId || 'flota');
     // Formato DD/MM/YYYY para que Sheets lo entienda como fecha
     const fmtFecha = iso => {
+      if (!iso) return '';           // cierre vacío → celda vacía → enCurso
       const [y, m, d] = iso.split('-');
       return `${d}/${m}/${y}`;
     };
     await appendRow(
       catastro.hojas.AUDITORIAS,
-      [Number(numero), fmtFecha(inicio), fmtFecha(cierre), nombre],
+      [Number(numero), fmtFecha(inicio), fmtFecha(cierre || ''), nombre],
       catastro.spreadsheetId
     );
     // Invalidar caché para que el dashboard refleje el cambio
@@ -288,6 +289,56 @@ app.post('/admin/api/auditoria', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('[/admin/api/auditoria]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// SECCIÓN: ADMIN — registrar fecha de cierre de auditoría en curso
+// PATCH /admin/api/auditoria  { catastro, numero, cierre }
+// ============================================================
+app.patch('/admin/api/auditoria', async (req, res) => {
+  try {
+    const { catastro: catastroId, numero, cierre } = req.body;
+    if (!numero || !cierre) {
+      return res.status(400).json({ error: 'Faltan campos: numero, cierre' });
+    }
+    const catastro = getCatastro(catastroId || 'flota');
+
+    // Leer la hoja para encontrar la fila y el índice de la columna Cierre
+    const audRows = await readSheet(catastro.hojas.AUDITORIAS, catastro.spreadsheetId);
+    if (!audRows || audRows.length < 2) {
+      return res.status(404).json({ error: 'No se encontraron filas en la hoja Auditorias' });
+    }
+
+    const headers = (audRows[0] || []).map(h => String(h).trim().toLowerCase());
+    const idxNum    = headers.findIndex(h => h.includes('n°') || h.includes('numero') || h.includes('número'));
+    const idxCierre = headers.findIndex(h => h.includes('cierre'));
+
+    if (idxCierre < 0) return res.status(500).json({ error: 'Columna "Cierre" no encontrada en hoja Auditorias' });
+
+    // Buscar la fila que tiene ese número de auditoría (fila 1-indexed para la API)
+    let rowIndex1 = -1;
+    for (let i = 1; i < audRows.length; i++) {
+      if (parseInt(audRows[i][idxNum]) === parseInt(numero)) {
+        rowIndex1 = i + 1; // Google Sheets es 1-indexed
+        break;
+      }
+    }
+    if (rowIndex1 < 0) return res.status(404).json({ error: `Auditoría #${numero} no encontrada` });
+
+    const fmtFecha = iso => {
+      const [y, m, d] = iso.split('-');
+      return `${d}/${m}/${y}`;
+    };
+
+    await updateCell(catastro.hojas.AUDITORIAS, rowIndex1, idxCierre, fmtFecha(cierre), catastro.spreadsheetId);
+
+    cache.invalidateByPrefix(`dashboard_${catastroId}`);
+    cache.invalidateByPrefix(`auditorias_lista_${catastroId}`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[PATCH /admin/api/auditoria]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
