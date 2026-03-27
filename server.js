@@ -7,12 +7,44 @@
 require('dotenv').config();
 const express = require('express');
 const path    = require('path');
-const { readSheet }        = require('./lib/sheets');
-const { procesarDashboard, NOMBRES_HOJAS } = require('./lib/processor');
+const { readSheet }                      = require('./lib/sheets');
+const { procesarDashboard, parseAuditorias } = require('./lib/processor');
 const cache   = require('./lib/cache');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
+
+// ============================================================
+// SECCIÓN: CONFIGURACIÓN DE CATASTROS
+// Cada catastro apunta a un Spreadsheet distinto y tiene sus
+// propios nombres de hojas.
+// ============================================================
+const CATASTROS = {
+  flota: {
+    nombre:        'Catastro de Flota - Catemito',
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    hojas: {
+      RESPUESTAS:  'Respuestas de formulario 3',
+      DATOS:       'Datos',
+      FLOTA:       'Flota',
+      AUDITORIAS:  'Auditorias',
+    },
+  },
+  senyaletica: {
+    nombre:        'Señalética y Elementos Críticos de Carrocería',
+    spreadsheetId: process.env.SPREADSHEET_ID_SENYALETICA,
+    hojas: {
+      RESPUESTAS:  'Respuestas de formulario 2',
+      DATOS:       'Datos',
+      FLOTA:       'Flota',
+      AUDITORIAS:  'Auditorias',
+    },
+  },
+};
+
+function getCatastro(id) {
+  return CATASTROS[id] || CATASTROS.flota;
+}
 
 // ============================================================
 // SECCIÓN: SERVIR ARCHIVOS ESTÁTICOS
@@ -25,8 +57,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Función compartida entre endpoints para evitar duplicar
 // la lógica de carga + caché.
 // ============================================================
-async function cargarDatos(numeroAuditoria) {
-  const cacheKey = `dashboard_${numeroAuditoria ?? 'latest'}`;
+async function cargarDatos(numeroAuditoria, catastroId = 'flota') {
+  const catastro  = getCatastro(catastroId);
+  const cacheKey  = `dashboard_${catastroId}_${numeroAuditoria ?? 'latest'}`;
 
   // Intentar devolver desde caché
   const cached = cache.get(cacheKey);
@@ -35,15 +68,17 @@ async function cargarDatos(numeroAuditoria) {
     return cached;
   }
 
-  console.log(`[Server] Cargando datos de Sheets para auditoría: ${numeroAuditoria ?? 'más reciente'}`);
+  console.log(`[Server] Cargando datos [${catastroId}] auditoría: ${numeroAuditoria ?? 'más reciente'}`);
+
+  const { hojas, spreadsheetId } = catastro;
 
   // Leer las 4 hojas en paralelo para mayor velocidad
   const [respRows, datosRows, flotaRows, audRows] = await Promise.all([
-    readSheet(NOMBRES_HOJAS.RESPUESTAS),
-    readSheet(NOMBRES_HOJAS.DATOS),
-    readSheet(NOMBRES_HOJAS.FLOTA),
-    readSheet(NOMBRES_HOJAS.AUDITORIAS).catch(() => {
-      console.warn('[Server] Hoja "Auditorias" no encontrada. Mostrando todos los datos.');
+    readSheet(hojas.RESPUESTAS,  spreadsheetId),
+    readSheet(hojas.DATOS,       spreadsheetId),
+    readSheet(hojas.FLOTA,       spreadsheetId),
+    readSheet(hojas.AUDITORIAS,  spreadsheetId).catch(() => {
+      console.warn(`[Server] Hoja "Auditorias" no encontrada en catastro ${catastroId}.`);
       return [];
     }),
   ]);
@@ -59,17 +94,32 @@ async function cargarDatos(numeroAuditoria) {
 }
 
 // ============================================================
+// SECCIÓN: API - LISTA DE CATASTROS DISPONIBLES
+// GET /api/catastros
+// ============================================================
+app.get('/api/catastros', (req, res) => {
+  const lista = Object.entries(CATASTROS).map(([id, cfg]) => ({
+    id,
+    nombre:       cfg.nombre,
+    configurado:  !!cfg.spreadsheetId,
+  }));
+  res.json(lista);
+});
+
+// ============================================================
 // SECCIÓN: API - LISTA DE AUDITORÍAS
-// GET /api/auditorias
+// GET /api/auditorias?catastro=flota
 // Retorna la lista de auditorías definidas en la hoja.
 // ============================================================
 app.get('/api/auditorias', async (req, res) => {
+  const catastroId = req.query.catastro || 'flota';
   try {
-    const cached = cache.get('auditorias_lista');
+    const cacheKey = `auditorias_lista_${catastroId}`;
+    const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
 
-    const audRows = await readSheet(NOMBRES_HOJAS.AUDITORIAS).catch(() => []);
-    const { parseAuditorias } = require('./lib/processor');
+    const catastro  = getCatastro(catastroId);
+    const audRows   = await readSheet(catastro.hojas.AUDITORIAS, catastro.spreadsheetId).catch(() => []);
     const auditorias = parseAuditorias(audRows).map(a => ({
       numero:  a.numero,
       nombre:  a.nombre,
@@ -78,7 +128,7 @@ app.get('/api/auditorias', async (req, res) => {
       enCurso: a.enCurso,
     }));
 
-    cache.set('auditorias_lista', auditorias, 2 * 60 * 1000);
+    cache.set(cacheKey, auditorias, 2 * 60 * 1000);
     res.json(auditorias);
   } catch (err) {
     console.error('[/api/auditorias]', err.message);
@@ -88,14 +138,13 @@ app.get('/api/auditorias', async (req, res) => {
 
 // ============================================================
 // SECCIÓN: API - DATOS DEL DASHBOARD
-// GET /api/dashboard?auditoria=N
-// Retorna todos los datos procesados para renderizar el
-// dashboard. Si no se especifica auditoría, usa la más reciente.
+// GET /api/dashboard?auditoria=N&catastro=flota
 // ============================================================
 app.get('/api/dashboard', async (req, res) => {
   try {
-    const numAud = req.query.auditoria ? parseInt(req.query.auditoria) : null;
-    const resultado = await cargarDatos(numAud);
+    const numAud     = req.query.auditoria ? parseInt(req.query.auditoria) : null;
+    const catastroId = req.query.catastro || 'flota';
+    const resultado  = await cargarDatos(numAud, catastroId);
     res.json(resultado.dashboard);
   } catch (err) {
     console.error('[/api/dashboard]', err.message);
@@ -105,16 +154,15 @@ app.get('/api/dashboard', async (req, res) => {
 
 // ============================================================
 // SECCIÓN: API - DETALLE POR BUS
-// GET /api/bus/:interno?auditoria=N
-// Retorna todos los valores de elementos para un bus específico.
-// Usado por la pestaña "Buscador por bus".
+// GET /api/bus/:interno?auditoria=N&catastro=flota
 // ============================================================
 app.get('/api/bus/:interno', async (req, res) => {
   try {
-    const busNum = req.params.interno.trim();
-    const numAud = req.query.auditoria ? parseInt(req.query.auditoria) : null;
+    const busNum     = req.params.interno.trim();
+    const numAud     = req.query.auditoria ? parseInt(req.query.auditoria) : null;
+    const catastroId = req.query.catastro || 'flota';
 
-    const resultado = await cargarDatos(numAud);
+    const resultado  = await cargarDatos(numAud, catastroId);
     const busDetalle = resultado.busesDetalle?.[busNum];
 
     if (!busDetalle) {
@@ -133,18 +181,24 @@ app.get('/api/bus/:interno', async (req, res) => {
 
 // ============================================================
 // SECCIÓN: API - LIMPIAR CACHÉ MANUALMENTE
-// GET /api/refresh
-// Fuerza recarga de todos los datos desde Sheets.
+// GET /api/refresh   — limpia todo
+// GET /api/refresh?catastro=flota — limpia solo ese catastro
 // ============================================================
 app.get('/api/refresh', (req, res) => {
-  cache.invalidateAll();
-  res.json({ ok: true, mensaje: 'Caché limpiado. Próxima carga traerá datos frescos de Sheets.' });
+  const catastroId = req.query.catastro;
+  if (catastroId) {
+    // Invalidar solo las entradas de este catastro
+    cache.invalidateByPrefix(`dashboard_${catastroId}`);
+    cache.invalidateByPrefix(`auditorias_lista_${catastroId}`);
+    res.json({ ok: true, mensaje: `Caché limpiado para catastro: ${catastroId}` });
+  } else {
+    cache.invalidateAll();
+    res.json({ ok: true, mensaje: 'Caché limpiado. Próxima carga traerá datos frescos de Sheets.' });
+  }
 });
 
 // ============================================================
 // SECCIÓN: RUTA FALLBACK
-// Cualquier ruta no reconocida devuelve el index.html
-// para que el router del frontend maneje la navegación.
 // ============================================================
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -154,9 +208,10 @@ app.get('*', (req, res) => {
 // SECCIÓN: INICIO DEL SERVIDOR
 // ============================================================
 app.listen(PORT, () => {
-  console.log(`\n🚌 Dashboard Flota Catemito`);
+  console.log(`\n📋 Dashboard Multi-Catastro - Catemito`);
   console.log(`   Puerto: ${PORT}`);
   console.log(`   URL:    http://localhost:${PORT}`);
-  console.log(`   Sheets: ${process.env.SPREADSHEET_ID ? '✅ Configurado' : '❌ SPREADSHEET_ID no definido'}`);
-  console.log(`   Creds:  ${process.env.GOOGLE_CREDENTIALS ? '✅ Configuradas' : '❌ GOOGLE_CREDENTIALS no definidas'}\n`);
+  console.log(`   Flota:       ${process.env.SPREADSHEET_ID          ? '✅' : '❌ SPREADSHEET_ID no definido'}`);
+  console.log(`   Señalética:  ${process.env.SPREADSHEET_ID_SENYALETICA ? '✅' : '❌ SPREADSHEET_ID_SENYALETICA no definido'}`);
+  console.log(`   Creds:       ${process.env.GOOGLE_CREDENTIALS       ? '✅' : '❌ GOOGLE_CREDENTIALS no definidas'}\n`);
 });

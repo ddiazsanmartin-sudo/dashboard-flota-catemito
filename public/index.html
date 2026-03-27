@@ -45,6 +45,11 @@
     /* Hover en fila de elemento */
     .elem-row:hover { background: #f8fafc; cursor: pointer; }
 
+    /* Selector de catastro */
+    .catastro-btn { color: #93c5fd; transition: all 0.2s; }
+    .catastro-btn:hover { color: #fff; }
+    .catastro-btn.activo { background: #f5a623; color: #0f2744; font-weight: 700; border-radius: 0.375rem; }
+
     /* Modal overlay */
     #modal-overlay { backdrop-filter: blur(2px); }
 
@@ -67,9 +72,17 @@
         <img src="/logo.png" alt="Subus" class="h-8" />
       </div>
       <div>
-        <h1 class="text-lg font-bold leading-tight">Catastro detallado - Catemito</h1>
+        <h1 class="text-lg font-bold leading-tight" id="titulo-nav">Catastro de Flota - Catemito</h1>
         <p class="text-xs text-blue-300" id="subtitulo-nav">Cargando datos...</p>
       </div>
+    </div>
+
+    <!-- Selector de catastro -->
+    <div class="flex items-center gap-1 bg-navy-light rounded-lg px-1 py-1">
+      <button id="btn-cat-flota" class="catastro-btn activo px-3 py-1.5 text-sm"
+              onclick="cambiarCatastro('flota')">🚌 Flota</button>
+      <button id="btn-cat-senyaletica" class="catastro-btn px-3 py-1.5 text-sm"
+              onclick="cambiarCatastro('senyaletica')">🪧 Señalética</button>
     </div>
 
     <!-- Selector de auditoría + refresh -->
@@ -79,7 +92,7 @@
         class="bg-navy-light border border-blue-600 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:border-gold">
         <option value="">Cargando...</option>
       </select>
-      <button onclick="cargarDashboard()" title="Actualizar datos"
+      <button onclick="refrescarDatos()" title="Actualizar datos"
         class="bg-gold hover:bg-gold-light text-navy font-bold px-3 py-1.5 rounded text-sm transition">
         ↻ Actualizar
       </button>
@@ -138,7 +151,7 @@
     <div class="text-4xl mb-3">⚠️</div>
     <h3 class="font-bold text-red-700 text-lg mb-2">Error al cargar los datos</h3>
     <p id="error-msg" class="text-red-600 text-sm mb-4"></p>
-    <button onclick="cargarDashboard()" class="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">
+    <button onclick="refrescarDatos()" class="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">
       Reintentar
     </button>
   </div>
@@ -316,9 +329,15 @@
 // =====================================================
 // SECCIÓN JS: ESTADO GLOBAL
 // =====================================================
-let datosActuales = null;
+let datosActuales   = null;
 let auditoriaActual = null;
-let busesNoEnFlota = new Set(); // Buses históricos que ya no están en la flota actual
+let busesNoEnFlota  = new Set(); // Buses históricos que ya no están en la flota actual
+let catastroActual  = 'flota';  // 'flota' | 'senyaletica'
+
+const CATASTROS_INFO = {
+  flota:       { titulo: 'Catastro de Flota - Catemito',                         icono: '🚌' },
+  senyaletica: { titulo: 'Señalética y Elementos Críticos de Carrocería',         icono: '🪧' },
+};
 
 // =====================================================
 // SECCIÓN JS: INICIALIZACIÓN
@@ -331,9 +350,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 // =====================================================
 // SECCIÓN JS: CARGA DEL SELECTOR DE AUDITORÍAS
 // =====================================================
+// =====================================================
+// SECCIÓN JS: CAMBIO DE CATASTRO
+// =====================================================
+function cambiarCatastro(id) {
+  catastroActual = id;
+  // Actualizar botones
+  document.querySelectorAll('.catastro-btn').forEach(b => b.classList.remove('activo'));
+  document.getElementById(`btn-cat-${id}`).classList.add('activo');
+  // Actualizar título
+  document.getElementById('titulo-nav').textContent = CATASTROS_INFO[id]?.titulo || id;
+  // Recargar todo con el nuevo catastro
+  cargarSelectAuditorias().then(() => cargarDashboard());
+}
+
+async function refrescarDatos() {
+  await fetch(`/api/refresh?catastro=${catastroActual}`);
+  await cargarSelectAuditorias();
+  await cargarDashboard();
+}
+
 async function cargarSelectAuditorias() {
   try {
-    const resp = await fetch('/api/auditorias');
+    const resp = await fetch(`/api/auditorias?catastro=${catastroActual}`);
     if (!resp.ok) return;
     const auditorias = await resp.json();
 
@@ -368,7 +407,9 @@ async function cargarDashboard() {
 
   const sel = document.getElementById('sel-auditoria');
   const numAud = sel.value || '';
-  const url = numAud ? `/api/dashboard?auditoria=${numAud}` : '/api/dashboard';
+  const url = numAud
+    ? `/api/dashboard?auditoria=${numAud}&catastro=${catastroActual}`
+    : `/api/dashboard?catastro=${catastroActual}`;
 
   try {
     const resp = await fetch(url);
@@ -849,7 +890,9 @@ async function buscarBus() {
   try {
     const sel = document.getElementById('sel-auditoria');
     const numAud = sel.value || '';
-    const url = numAud ? `/api/bus/${busNum}?auditoria=${numAud}` : `/api/bus/${busNum}`;
+    const url = numAud
+      ? `/api/bus/${busNum}?auditoria=${numAud}&catastro=${catastroActual}`
+      : `/api/bus/${busNum}?catastro=${catastroActual}`;
     const resp = await fetch(url);
 
     if (resp.status === 404) {
