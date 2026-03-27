@@ -310,6 +310,7 @@
 // =====================================================
 let datosActuales = null;
 let auditoriaActual = null;
+let busesNoEnFlota = new Set(); // Buses históricos que ya no están en la flota actual
 
 // =====================================================
 // SECCIÓN JS: INICIALIZACIÓN
@@ -370,6 +371,7 @@ async function cargarDashboard() {
 
     datosActuales = await resp.json();
     auditoriaActual = datosActuales.auditoria;
+    busesNoEnFlota = new Set(datosActuales.busesNoEnFlota || []);
 
     renderNavbar();
     renderProgreso();
@@ -680,14 +682,41 @@ function abrirModal(el, sgEncoded) {
   if (!el.fallidos || el.fallidos.length === 0) {
     contenedor.innerHTML = `<p class="text-emerald-600 text-sm font-medium">✅ Todos los buses operativos</p>`;
   } else {
-    el.fallidos.forEach(bus => {
-      const span = document.createElement('span');
-      span.className = 'bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full cursor-pointer hover:bg-red-200';
-      span.textContent = bus;
-      span.title = 'Buscar este bus';
-      span.onclick = () => { cerrarModal(); irABuscador(bus); };
-      contenedor.appendChild(span);
-    });
+    // Separar buses activos de los que ya no están en la flota
+    const activos = el.fallidos.filter(b => !busesNoEnFlota.has(b));
+    const retirados = el.fallidos.filter(b => busesNoEnFlota.has(b));
+
+    if (activos.length > 0) {
+      const labelActivos = document.createElement('p');
+      labelActivos.className = 'text-xs text-slate-500 font-semibold uppercase tracking-wide w-full mb-1';
+      labelActivos.textContent = `En flota actual (${activos.length}):`;
+      contenedor.appendChild(labelActivos);
+      activos.forEach(bus => {
+        const span = document.createElement('span');
+        span.className = 'bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full cursor-pointer hover:bg-red-200';
+        span.textContent = bus;
+        span.title = 'Buscar este bus';
+        span.onclick = () => { cerrarModal(); irABuscador(bus); };
+        contenedor.appendChild(span);
+      });
+    }
+
+    if (retirados.length > 0) {
+      const sep = document.createElement('div');
+      sep.className = 'w-full border-t border-dashed border-slate-200 my-3';
+      contenedor.appendChild(sep);
+      const labelRetirados = document.createElement('p');
+      labelRetirados.className = 'text-xs text-slate-400 font-semibold uppercase tracking-wide w-full mb-1';
+      labelRetirados.innerHTML = `⚠️ Ya no en flota (${retirados.length}):`;
+      contenedor.appendChild(labelRetirados);
+      retirados.forEach(bus => {
+        const span = document.createElement('span');
+        span.className = 'bg-slate-100 text-slate-400 text-xs font-bold px-2.5 py-1 rounded-full line-through';
+        span.textContent = bus;
+        span.title = 'Este bus ya no está en la flota de Catemito';
+        contenedor.appendChild(span);
+      });
+    }
   }
 
   document.getElementById('modal-overlay').classList.remove('hidden');
@@ -816,10 +845,16 @@ function renderDetalleBus(bus) {
 
   let html = `
     <!-- Info del bus -->
-    <div class="bg-navy text-white rounded-2xl p-5 mb-5 flex flex-wrap gap-4 items-center">
-      <div class="text-4xl">🚌</div>
+    <div class="${busesNoEnFlota.has(bus.nInterno) ? 'bg-slate-500' : 'bg-navy'} text-white rounded-2xl p-5 mb-5 flex flex-wrap gap-4 items-center">
+      <div class="text-4xl">${busesNoEnFlota.has(bus.nInterno) ? '🚫' : '🚌'}</div>
       <div>
-        <h3 class="text-2xl font-black">N° ${bus.nInterno}</h3>
+        <div class="flex items-center gap-2 flex-wrap">
+          <h3 class="text-2xl font-black">N° ${bus.nInterno}</h3>
+          ${busesNoEnFlota.has(bus.nInterno)
+            ? `<span class="text-xs bg-yellow-400 text-slate-900 font-bold px-2 py-0.5 rounded-full">⚠️ Ya no está en la flota</span>`
+            : `<span class="text-xs bg-emerald-500/30 text-emerald-200 font-bold px-2 py-0.5 rounded-full">✓ En flota activa</span>`
+          }
+        </div>
         <p class="text-blue-300 text-sm">${bus.modelo || '—'} · ${bus.estandar || '—'}</p>
         <p class="text-blue-400 text-xs">Auditado: ${bus.fechaAuditoria ? new Date(bus.fechaAuditoria).toLocaleDateString('es-CL', {day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</p>
       </div>
