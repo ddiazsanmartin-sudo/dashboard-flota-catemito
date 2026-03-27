@@ -29,6 +29,12 @@ const CATASTROS = {
       FLOTA:       'Flota',
       AUDITORIAS:  'Auditorias',
     },
+    // Nombres de columnas clave en la hoja Respuestas
+    colNames: {
+      timestamp:  'Marca temporal',
+      busNumero:  'N° Interno del bus',
+      estandar:   'Señale el estándar del bus',
+    },
   },
   senyaletica: {
     nombre:        'Señalética y Elementos Críticos de Carrocería',
@@ -38,6 +44,12 @@ const CATASTROS = {
       DATOS:       'Datos',
       FLOTA:       'Flota',
       AUDITORIAS:  'Auditorias',
+    },
+    // Nombres de columnas clave en la hoja Respuestas (nombres del form de señalética)
+    colNames: {
+      timestamp:  'Marca temporal',
+      busNumero:  'Numero Interno de la unidad',
+      estandar:   'Señale el estándar del bus para señalética exterior',
     },
   },
 };
@@ -86,6 +98,7 @@ async function cargarDatos(numeroAuditoria, catastroId = 'flota') {
   const resultado = procesarDashboard({
     respRows, datosRows, flotaRows, audRows,
     numeroAuditoria: numeroAuditoria ?? null,
+    colNames: catastro.colNames || {},
   });
 
   // Guardar en caché por 5 minutos
