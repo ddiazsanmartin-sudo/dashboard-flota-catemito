@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Catastro detallado - Catemito</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -126,6 +127,8 @@
             onclick="mostrarTab('progreso', this)">📊 Progreso</button>
     <!-- Tabs de grupos: se generan dinámicamente según los datos del catastro -->
     <span id="tabs-grupos-nav"></span>
+    <button id="tab-btn-tendencias" class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
+            onclick="mostrarTab('tendencias', this)">📈 Tendencias</button>
     <button id="tab-btn-buscador" class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
             onclick="mostrarTab('buscador', this)">🔍 Buscador por Bus</button>
   </div>
@@ -235,6 +238,13 @@
   ===================================================== -->
   <!-- Tabs de grupos: se inyectan dinámicamente al cargar datos -->
   <div id="contenedor-grupos-tabs"></div>
+
+  <!-- =====================================================
+       SECCIÓN TAB: TENDENCIAS
+  ===================================================== -->
+  <div id="tab-tendencias" class="tab-content hidden">
+    <div id="contenido-tendencias"></div>
+  </div>
 
   <!-- =====================================================
        SECCIÓN TAB: BUSCADOR POR BUS
@@ -414,6 +424,7 @@ async function cargarDashboard() {
     renderNavbar();
     renderProgreso();
     generarTabsGrupos();   // Crea botones y divs dinámicamente según los grupos del catastro
+    renderTendencias();
     renderSugerenciasBuses();
 
     mostrarCarga(false);
@@ -881,6 +892,247 @@ function cerrarModal() {
 document.getElementById('modal-overlay').addEventListener('click', (e) => {
   if (e.target === document.getElementById('modal-overlay')) cerrarModal();
 });
+
+// =====================================================
+// SECCIÓN JS: TENDENCIAS — gráficos + heatmap
+// =====================================================
+const chartInstances = {};
+
+function destroyChart(id) {
+  if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+}
+
+function lineOptions(yMin = 40) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12, padding: 10 } },
+      tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y != null ? c.parsed.y.toFixed(1)+'%' : 'Sin datos'}` } },
+    },
+    scales: {
+      y: { min: yMin, max: 100, ticks: { callback: v => v+'%', font: { size: 11 } }, grid: { color: '#e2e8f0' } },
+      x: { ticks: { font: { size: 10 } }, grid: { display: false } },
+    },
+  };
+}
+
+const CHART_COLORS = ['#3b82f6','#10b981','#ef4444','#8b5cf6','#f59e0b','#06b6d4','#ec4899','#f5a623','#84cc16','#6366f1','#14b8a6','#f97316'];
+
+function renderTendencias() {
+  const contenedor = document.getElementById('contenido-tendencias');
+  if (!contenedor) return;
+
+  // Serie temporal: historial ordenado + auditoría actual
+  const audActual = {
+    numero: datosActuales?.auditoria?.numero,
+    nombre: datosActuales?.auditoria?.nombre || 'Actual',
+    porcentajeGeneral: datosActuales?.porcentajeGeneral,
+    porPestaña: Object.fromEntries(
+      Object.entries(datosActuales?.tabs || {}).map(([g, v]) => [g, v.porcentajeGeneral])
+    ),
+    tabsFull: datosActuales?.tabs,
+  };
+  const historico = (datosActuales?.historial || [])
+    .map(h => ({ ...h, tabsFull: null }))
+    .sort((a, b) => a.numero - b.numero);
+  const serie = [...historico, audActual];
+  const labels = serie.map(e => e.nombre || `Aud. ${e.numero}`);
+
+  const grupos = Object.keys(datosActuales?.tabs || {});
+  const tenemos2 = serie.length >= 2;
+
+  // ------- Construir HTML -------
+  let html = '';
+
+  // — Tendencia general —
+  html += `<div class="bg-white rounded-2xl shadow p-5 mb-6">
+    <h2 class="text-lg font-bold text-navy mb-1">Tendencia general de cumplimiento</h2>
+    <p class="text-xs text-slate-400 mb-4">Evolución del % global a lo largo de las auditorías</p>
+    ${!tenemos2 ? '<p class="text-sm text-yellow-600 bg-yellow-50 rounded-lg p-3">Se necesitan al menos 2 auditorías para ver la tendencia.</p>' : '<div style="height:220px"><canvas id="chart-general"></canvas></div>'}
+  </div>`;
+
+  // — Tendencia por grupo —
+  if (tenemos2 && grupos.length) {
+    html += `<div class="grid gap-6 ${grupos.length > 1 ? 'md:grid-cols-2' : ''} mb-6">`;
+    grupos.forEach(g => {
+      const id = grupoAId(g);
+      html += `<div class="bg-white rounded-2xl shadow p-5">
+        <h3 class="font-bold text-navy mb-1">${g} — por subgrupo</h3>
+        <p class="text-xs text-slate-400 mb-3">Cada línea es un subgrupo</p>
+        <div style="height:280px"><canvas id="chart-grupo-${id}"></canvas></div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // — Top 10 elementos más problemáticos —
+  html += `<div class="bg-white rounded-2xl shadow p-5 mb-6">
+    <h2 class="text-lg font-bold text-navy mb-1">🔴 Top 10 elementos más problemáticos</h2>
+    <p class="text-xs text-slate-400 mb-4">Auditoría actual · ordenados de mayor a menor falla</p>
+    <div style="height:380px"><canvas id="chart-top-fallidos"></canvas></div>
+  </div>`;
+
+  // — Heatmap —
+  html += `<div class="bg-white rounded-2xl shadow p-5 mb-6">
+    <h2 class="text-lg font-bold text-navy mb-1">🗺 Mapa de calor — Buses × Subgrupo</h2>
+    <p class="text-xs text-slate-400 mb-4">Auditoría actual · 🟢 ≥95% · 🟡 85-94% · 🔴 &lt;85% · ⬜ Sin datos</p>
+    <div id="contenedor-heatmap" class="overflow-auto max-h-[600px]"></div>
+  </div>`;
+
+  contenedor.innerHTML = html;
+
+  // Destruir charts anteriores
+  Object.keys(chartInstances).forEach(id => { if(id.startsWith('chart-')) destroyChart(id); });
+
+  // Renderizar charts
+  if (tenemos2) {
+    renderChartGeneral(serie, labels);
+    grupos.forEach(g => renderChartGrupoTendencia(g, serie, labels));
+  }
+  renderChartTopFallidos();
+  renderHeatmap();
+}
+
+function renderChartGeneral(serie, labels) {
+  destroyChart('chart-general');
+  const ctx = document.getElementById('chart-general');
+  if (!ctx) return;
+  chartInstances['chart-general'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Cumplimiento general',
+        data: serie.map(e => e.porcentajeGeneral ?? null),
+        borderColor: '#f5a623', backgroundColor: 'rgba(245,166,35,0.08)',
+        borderWidth: 3, pointRadius: 5, fill: true, tension: 0.3,
+      }],
+    },
+    options: lineOptions(0),
+  });
+}
+
+function renderChartGrupoTendencia(grupoNombre, serie, labels) {
+  const id = `chart-grupo-${grupoAId(grupoNombre)}`;
+  destroyChart(id);
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+
+  // Recolectar subgrupos del catastro actual
+  const subgrupos = (datosActuales?.tabs?.[grupoNombre]?.subgrupos || []).map(s => s.nombre);
+
+  const datasets = subgrupos.map((sgNombre, i) => ({
+    label: sgNombre,
+    data: serie.map(e => {
+      if (e.tabsFull) {
+        // Entrada actual: datos completos disponibles
+        const sg = (e.tabsFull[grupoNombre]?.subgrupos || []).find(s => s.nombre === sgNombre);
+        return sg?.porcentaje ?? null;
+      }
+      // Entradas históricas: usar porSubgrupo guardado en el historial
+      return e.porSubgrupo?.[grupoNombre]?.[sgNombre] ?? null;
+    }),
+    borderColor: CHART_COLORS[i % CHART_COLORS.length],
+    backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + '15',
+    borderWidth: 2, pointRadius: 4, tension: 0.3,
+    spanGaps: false,
+  }));
+
+  chartInstances[id] = new Chart(ctx, {
+    type: 'line', data: { labels, datasets }, options: lineOptions(0),
+  });
+}
+
+function renderChartTopFallidos() {
+  destroyChart('chart-top-fallidos');
+  const ctx = document.getElementById('chart-top-fallidos');
+  if (!ctx) return;
+
+  const elementos = [];
+  Object.values(datosActuales?.tabs || {}).forEach(grupo => {
+    (grupo.subgrupos || []).forEach(sg => {
+      (sg.elementos || []).forEach(el => {
+        if (el.porcentaje != null) {
+          elementos.push({ nombre: el.nombre, subgrupo: sg.nombre, pct: el.porcentaje });
+        }
+      });
+    });
+  });
+  elementos.sort((a, b) => a.pct - b.pct);
+  const top = elementos.slice(0, 10);
+
+  if (!top.length) { document.getElementById('chart-top-fallidos').parentElement.innerHTML = '<p class="text-sm text-slate-400">Sin datos.</p>'; return; }
+
+  chartInstances['chart-top-fallidos'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top.map(e => e.nombre.length > 45 ? e.nombre.slice(0,43)+'…' : e.nombre),
+      datasets: [{
+        label: 'Cumplimiento %',
+        data: top.map(e => e.pct),
+        backgroundColor: top.map(e => e.pct >= 95 ? '#10b981' : e.pct >= 85 ? '#f59e0b' : '#ef4444'),
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${c.parsed.x.toFixed(1)}%` } } },
+      scales: {
+        x: { min: 0, max: 100, ticks: { callback: v => v+'%', font: { size: 11 } } },
+        y: { ticks: { font: { size: 11 } } },
+      },
+    },
+  });
+}
+
+function renderHeatmap() {
+  const contenedor = document.getElementById('contenedor-heatmap');
+  if (!contenedor) return;
+
+  const hm = datosActuales?.heatmapData;
+  if (!hm || !hm.buses?.length) {
+    contenedor.innerHTML = '<p class="text-sm text-slate-400 p-4">Sin datos de heatmap para esta auditoría.</p>';
+    return;
+  }
+
+  const { buses, subgrupos, valores } = hm;
+
+  // Abreviar nombres de subgrupo para el encabezado (máx 18 chars)
+  const abrev = s => s.length > 18 ? s.slice(0,16)+'…' : s;
+
+  // Color de celda
+  function cellColor(v) {
+    if (v == null) return 'background:#f1f5f9;color:#94a3b8';
+    if (v >= 95)   return 'background:#d1fae5;color:#065f46';
+    if (v >= 85)   return 'background:#fef3c7;color:#92400e';
+    return             'background:#fee2e2;color:#991b1b';
+  }
+
+  let html = `<table style="border-collapse:collapse;font-size:11px;min-width:100%">
+    <thead>
+      <tr style="position:sticky;top:0;z-index:2;background:#0f2744">
+        <th style="padding:6px 10px;text-align:left;color:#fff;white-space:nowrap;position:sticky;left:0;background:#0f2744;z-index:3">Bus</th>
+        ${subgrupos.map(s => `<th style="padding:6px 8px;color:#fff;white-space:nowrap;writing-mode:vertical-rl;transform:rotate(180deg);height:90px;text-align:left" title="${s}">${abrev(s)}</th>`).join('')}
+      </tr>
+    </thead>
+    <tbody>`;
+
+  buses.forEach((bus, i) => {
+    const bg = i % 2 === 0 ? '#fff' : '#f8fafc';
+    html += `<tr>
+      <td style="padding:4px 10px;font-weight:600;white-space:nowrap;position:sticky;left:0;background:${bg};border-right:2px solid #e2e8f0">${bus}</td>
+      ${subgrupos.map(sg => {
+        const v = valores[bus]?.[sg];
+        const txt = v != null ? v+'%' : '—';
+        return `<td style="${cellColor(v)};padding:4px 6px;text-align:center;font-weight:600;border:1px solid #f1f5f9" title="${sg}: ${txt}">${txt}</td>`;
+      }).join('')}
+    </tr>`;
+  });
+
+  html += `</tbody></table>`;
+  contenedor.innerHTML = html;
+}
 
 // =====================================================
 // SECCIÓN JS: BUSCADOR POR BUS
