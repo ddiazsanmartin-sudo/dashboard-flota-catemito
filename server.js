@@ -5,8 +5,9 @@
 // ============================================================
 
 require('dotenv').config();
-const express = require('express');
-const path    = require('path');
+const express   = require('express');
+const path      = require('path');
+const basicAuth = require('express-basic-auth');
 const { readSheet }                      = require('./lib/sheets');
 const { procesarDashboard, parseAuditorias } = require('./lib/processor');
 const cache   = require('./lib/cache');
@@ -56,6 +57,30 @@ const CATASTROS = {
 
 function getCatastro(id) {
   return CATASTROS[id] || CATASTROS.flota;
+}
+
+// ============================================================
+// SECCIÓN: AUTENTICACIÓN BÁSICA (opcional)
+// Si DASHBOARD_USERS está definida en el entorno, protege
+// todo el dashboard con usuario/contraseña.
+// Formato de la variable: {"usuario":"contraseña","otro":"clave"}
+// Si no está definida, el dashboard es público.
+// ============================================================
+if (process.env.DASHBOARD_USERS) {
+  let users = {};
+  try {
+    users = JSON.parse(process.env.DASHBOARD_USERS);
+  } catch (e) {
+    console.error('[Auth] DASHBOARD_USERS no es JSON válido:', e.message);
+  }
+  if (Object.keys(users).length > 0) {
+    app.use(basicAuth({
+      users,
+      challenge: true,
+      realm: 'Dashboard Catemito',
+    }));
+    console.log(`[Auth] Protección activa — ${Object.keys(users).length} usuario(s) configurado(s).`);
+  }
 }
 
 // ============================================================

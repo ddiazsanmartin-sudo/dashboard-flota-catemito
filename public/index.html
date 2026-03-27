@@ -1096,12 +1096,9 @@ function renderHeatmap() {
     return;
   }
 
-  const { buses, subgrupos, valores } = hm;
+  const { buses, subgrupos, valores, totales } = hm;
 
-  // Abreviar nombres de subgrupo para el encabezado (máx 18 chars)
-  const abrev = s => s.length > 18 ? s.slice(0,16)+'…' : s;
-
-  // Color de celda
+  // Color de celda por umbral
   function cellColor(v) {
     if (v == null) return 'background:#f1f5f9;color:#94a3b8';
     if (v >= 95)   return 'background:#d1fae5;color:#065f46';
@@ -1109,24 +1106,49 @@ function renderHeatmap() {
     return             'background:#fee2e2;color:#991b1b';
   }
 
-  let html = `<table style="border-collapse:collapse;font-size:11px;min-width:100%">
+  // Encabezado vertical: texto rotado -90° dentro de celda de altura fija
+  const thVertical = (s) =>
+    `<th title="${s}" style="min-width:42px;width:42px;height:120px;padding:0;vertical-align:bottom;background:#0f2744">
+       <div style="display:flex;justify-content:center;align-items:flex-end;height:100%;padding-bottom:6px">
+         <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:600;
+                      color:#fff;white-space:nowrap;overflow:hidden;max-height:108px;display:block">${s}</span>
+       </div>
+     </th>`;
+
+  let html = `<table style="border-collapse:collapse;font-size:11px">
     <thead>
-      <tr style="position:sticky;top:0;z-index:2;background:#0f2744">
-        <th style="padding:6px 10px;text-align:left;color:#fff;white-space:nowrap;position:sticky;left:0;background:#0f2744;z-index:3">Bus</th>
-        ${subgrupos.map(s => `<th style="padding:6px 8px;color:#fff;white-space:nowrap;writing-mode:vertical-rl;transform:rotate(180deg);height:90px;text-align:left" title="${s}">${abrev(s)}</th>`).join('')}
+      <tr>
+        <th style="padding:6px 10px;text-align:left;color:#fff;white-space:nowrap;
+                   position:sticky;left:0;top:0;background:#0f2744;z-index:4;min-width:60px">Bus</th>
+        ${subgrupos.map(s => thVertical(s)).join('')}
+        <th style="min-width:54px;width:54px;height:120px;padding:0;vertical-align:bottom;
+                   background:#1a3a5c;position:sticky;right:0;z-index:2">
+          <div style="display:flex;justify-content:center;align-items:flex-end;height:100%;padding-bottom:6px">
+            <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:700;
+                         color:#f5a623;white-space:nowrap;overflow:hidden;max-height:108px;display:block">TOTAL BUS</span>
+          </div>
+        </th>
       </tr>
     </thead>
     <tbody>`;
 
   buses.forEach((bus, i) => {
     const bg = i % 2 === 0 ? '#fff' : '#f8fafc';
+    const tot = totales?.[bus];
     html += `<tr>
-      <td style="padding:4px 10px;font-weight:600;white-space:nowrap;position:sticky;left:0;background:${bg};border-right:2px solid #e2e8f0">${bus}</td>
+      <td style="padding:4px 10px;font-weight:600;white-space:nowrap;position:sticky;left:0;
+                 background:${bg};border-right:2px solid #e2e8f0;z-index:1">${bus}</td>
       ${subgrupos.map(sg => {
         const v = valores[bus]?.[sg];
         const txt = v != null ? v+'%' : '—';
-        return `<td style="${cellColor(v)};padding:4px 6px;text-align:center;font-weight:600;border:1px solid #f1f5f9" title="${sg}: ${txt}">${txt}</td>`;
+        return `<td style="${cellColor(v)};padding:4px 6px;text-align:center;font-weight:600;
+                     border:1px solid #f1f5f9" title="${sg}: ${txt}">${txt}</td>`;
       }).join('')}
+      <td style="${cellColor(tot)};padding:4px 8px;text-align:center;font-weight:700;font-size:12px;
+                 border:2px solid #e2e8f0;position:sticky;right:0;z-index:1"
+          title="Cumplimiento total del bus">
+        ${tot != null ? tot+'%' : '—'}
+      </td>
     </tr>`;
   });
 
