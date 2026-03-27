@@ -122,15 +122,11 @@
 ===================================================== -->
 <nav class="bg-navy-light shadow sticky top-0 z-20">
   <div class="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto py-1">
-    <button class="tab-btn active whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
+    <button id="tab-btn-progreso" class="tab-btn active whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
             onclick="mostrarTab('progreso', this)">📊 Progreso</button>
-    <button class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
-            onclick="mostrarTab('accesorios', this)">🔧 Accesorios</button>
-    <button class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
-            onclick="mostrarTab('camaras', this)">📷 Cámaras</button>
-    <button class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
-            onclick="mostrarTab('ruteros', this)">🪧 Ruteros</button>
-    <button class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
+    <!-- Tabs de grupos: se generan dinámicamente según los datos del catastro -->
+    <span id="tabs-grupos-nav"></span>
+    <button id="tab-btn-buscador" class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
             onclick="mostrarTab('buscador', this)">🔍 Buscador por Bus</button>
   </div>
 </nav>
@@ -237,15 +233,8 @@
        SECCIÓN TAB: ACCESORIOS / CÁMARAS / RUTEROS
        (template reutilizado para los 3 tabs de grupos)
   ===================================================== -->
-  <div id="tab-accesorios" class="tab-content hidden">
-    <div id="contenido-accesorios"></div>
-  </div>
-  <div id="tab-camaras" class="tab-content hidden">
-    <div id="contenido-camaras"></div>
-  </div>
-  <div id="tab-ruteros" class="tab-content hidden">
-    <div id="contenido-ruteros"></div>
-  </div>
+  <!-- Tabs de grupos: se inyectan dinámicamente al cargar datos -->
+  <div id="contenedor-grupos-tabs"></div>
 
   <!-- =====================================================
        SECCIÓN TAB: BUSCADOR POR BUS
@@ -424,9 +413,7 @@ async function cargarDashboard() {
 
     renderNavbar();
     renderProgreso();
-    renderTabGrupo('Accesorios', 'accesorios');
-    renderTabGrupo('Camaras', 'camaras');
-    renderTabGrupo('Ruteros', 'ruteros');
+    generarTabsGrupos();   // Crea botones y divs dinámicamente según los grupos del catastro
     renderSugerenciasBuses();
 
     mostrarCarga(false);
@@ -617,7 +604,49 @@ function renderProgreso() {
 }
 
 // =====================================================
-// SECCIÓN JS: RENDER TAB GRUPO (Accesorios / Cámaras / Ruteros)
+// SECCIÓN JS: GENERACIÓN DINÁMICA DE TABS POR GRUPO
+// Lee los grupos desde datosActuales.tabs y crea los
+// botones de navegación y los divs de contenido.
+// =====================================================
+const GRUPO_ICONOS = {
+  'accesorios': '🔧', 'camaras': '📷', 'ruteros': '🪧',
+  'señaletica': '🪧', 'senyaletica': '🪧', 'señalética': '🪧',
+  'detalles': '🔩', 'exterior': '🚌', 'interior': '🪑',
+};
+
+function grupoAId(nombre) {
+  // Convierte "Señalética Interior" → "senaletica-interior" (seguro para usar como ID)
+  return nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function generarTabsGrupos() {
+  const grupos = Object.keys(datosActuales?.tabs || {});
+
+  // --- Botones de nav ---
+  const navContainer = document.getElementById('tabs-grupos-nav');
+  navContainer.innerHTML = grupos.map(g => {
+    const id   = grupoAId(g);
+    const icon = GRUPO_ICONOS[id] || GRUPO_ICONOS[grupoAId(g.split(' ')[0])] || '📋';
+    return `<button class="tab-btn whitespace-nowrap px-4 py-2 rounded text-sm text-white transition"
+              onclick="mostrarTab('${id}', this)">${icon} ${g}</button>`;
+  }).join('');
+
+  // --- Divs de contenido ---
+  const contenedor = document.getElementById('contenedor-grupos-tabs');
+  contenedor.innerHTML = grupos.map(g => {
+    const id = grupoAId(g);
+    return `<div id="tab-${id}" class="tab-content hidden"><div id="contenido-${id}"></div></div>`;
+  }).join('');
+
+  // Renderizar el contenido de cada grupo
+  grupos.forEach(g => renderTabGrupo(g, grupoAId(g)));
+}
+
+// =====================================================
+// SECCIÓN JS: RENDER TAB GRUPO (dinámico por catastro)
+// grupoNombre: clave en datosActuales.tabs (ej: "Señaletica", "Detalles")
+// tabId: ID normalizado (ej: "senyaletica", "detalles")
 // =====================================================
 function renderTabGrupo(grupoNombre, tabId) {
   const contenedor = document.getElementById(`contenido-${tabId}`);
